@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.0.1
+ Phiên bản : V1.0.2
  Ngày      : 10/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,9 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.0.2 – Nhập Excel đọc đúng file xuất Hik-Connect (ID / Tên riêng /
+            Bộ phận "Công ty/Bộ phận"), tách "(Tổ Trưởng)" thành chức vụ,
+            batch 400 dòng/lần.
    V1.0.1 – Nhúng sẵn firebaseConfig của project chamcongcbt (không
             phải dán key mỗi lần).
    V1.0.0 – Bản đầu: đăng nhập, Hôm nay, Tháng, Lương, Nhân viên,
@@ -109,7 +112,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.1</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.2</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="month">Tháng</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -569,17 +572,25 @@ async function bulkAssign(){ if(!eSel.size){ toast('Chưa tick chọn nhân viê
 async function bulkAssignDo(){ const d=$('#bDept').value, c=$('#bCty').value.trim(); const b=db.batch(); for(const no of eSel){ const u={boPhan:d,updatedAt:TS.now(),updatedBy:ME.username}; if(c) u.congTy=c; b.set(db.collection('employees').doc(no),u,{merge:true}); Object.assign(EMPS[no],u); } await b.commit(); toast('Đã gán '+eSel.size+' người'); eSel.clear(); closeModal(); fillDeptSelects(); renderEmp(); }
 async function importEmp(inp){
   const f=inp.files[0]; if(!f) return; const buf=await f.arrayBuffer(); const wb=XLSX.read(buf); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-  let hi=rows.findIndex(r=>r.some(c=>/mã|ma nv|employee|id/i.test(String(c)))&&r.some(c=>/tên|ten|name/i.test(String(c)))); if(hi<0){ toast('Không tìm thấy dòng tiêu đề có "Mã" và "Tên".'); inp.value=''; return; }
-  const hdr=rows[hi].map(x=>String(x).toLowerCase()); const fi=re=>hdr.findIndex(h=>re.test(h));
-  const ci={no:fi(/mã|ma nv|employee|^id/),name:fi(/họ|tên|ten|name/),dept:fi(/bộ phận|bo phan|tổ|phòng|department|group|nhóm/),he:fi(/^hệ|^he$/),cty:fi(/công ty|cong ty|company/)};
-  const deptByName={}; for(const id in DEPTS) deptByName[DEPTS[id].ten.toLowerCase()]=id;
-  let n=0,newDept=new Set(); const b=db.batch();
-  for(const r of rows.slice(hi+1)){ const no=String(r[ci.no]||'').trim(); const name=String(r[ci.name]||'').trim(); if(!no||!name) continue;
-    const u={name,updatedAt:TS.now(),updatedBy:ME.username}; if(ci.he>=0&&r[ci.he]) u.he=Number(r[ci.he])||1; if(ci.cty>=0&&r[ci.cty]) u.congTy=String(r[ci.cty]).trim();
-    if(ci.dept>=0&&r[ci.dept]){ const dn=String(r[ci.dept]).trim(); const id=deptByName[dn.toLowerCase()]; if(id) u.boPhan=id; else newDept.add(dn); }
-    b.set(db.collection('employees').doc(no),u,{merge:true}); EMPS[no]=Object.assign({employeeNo:no,active:true},EMPS[no]||{},u); n++; if(n%400===0){ await b.commit(); } }
-  await b.commit(); inp.value=''; renderEmp(); fillDeptSelects();
-  toast(`Đã nhập/cập nhật ${n} nhân viên`+(newDept.size?`. ${newDept.size} tên bộ phận chưa có trong app: ${[...newDept].slice(0,5).join(', ')}… — tạo bộ phận trùng tên rồi nhập lại.`:''),6000);
+  // Tìm dòng tiêu đề: có ô "ID"/"Mã" VÀ ô "Tên"
+  const norm=x=>String(x).replace(/^\*/,'').trim().toLowerCase();
+  let hi=rows.findIndex(r=>r.filter(c=>c!=='').length>=3 && r.some(c=>/^(id|mã nv|mã|ma nv|employee ?no|employee id)$/.test(norm(c))) && r.some(c=>/^(tên riêng|họ tên|họ và tên|tên|name|full name)$/.test(norm(c))));
+  if(hi<0){ toast('Không tìm thấy dòng tiêu đề có "ID/Mã" và "Tên".',5000); inp.value=''; return; }
+  const hdr=rows[hi].map(norm); const fi=re=>hdr.findIndex(h=>re.test(h));
+  const ci={no:fi(/^(id|mã nv|mã|ma nv|employee ?no|employee id)$/),name:fi(/^(tên riêng|họ tên|họ và tên|tên|name|full name)$/),ho:fi(/^(họ|last name)$/),dept:fi(/bộ phận|bo phan|^tổ|phòng ban|department|group|nhóm/),he:fi(/^(hệ|he|hệ số)$/),cty:fi(/công ty|cong ty|company/),chucVu:fi(/chức vụ|position/)};
+  const deptByName={}; for(const id in DEPTS) deptByName[DEPTS[id].ten.trim().toLowerCase()]=id;
+  let n=0,matched=0,newDept=new Set(); let b=db.batch(), cnt=0;
+  for(const r of rows.slice(hi+1)){ const no=String(r[ci.no]||'').trim(); let name=String(r[ci.name]||'').trim(); if(ci.ho>=0&&r[ci.ho]) name=(String(r[ci.ho]).trim()+' '+name).trim(); if(!no||!name) continue;
+    const u={name,updatedAt:TS.now(),updatedBy:ME.username};
+    const cv=name.match(/\((.+?)\)\s*$/); if(cv){ u.chucVu=cv[1].trim(); u.name=name.replace(/\s*\(.+?\)\s*$/,'').trim(); }
+    if(ci.chucVu>=0&&r[ci.chucVu]) u.chucVu=String(r[ci.chucVu]).trim();
+    if(ci.he>=0&&r[ci.he]) u.he=Number(r[ci.he])||1; if(ci.cty>=0&&r[ci.cty]) u.congTy=String(r[ci.cty]).trim();
+    if(ci.dept>=0&&r[ci.dept]){ const parts=String(r[ci.dept]).split('/').map(x=>x.trim()).filter(Boolean); const dn=parts[parts.length-1]||''; if(parts.length>1&&!u.congTy) u.congTy=parts[0];
+      const id=deptByName[dn.toLowerCase()]; if(id){ u.boPhan=id; matched++; } else if(dn) newDept.add(dn); }
+    b.set(db.collection('employees').doc(no),u,{merge:true}); EMPS[no]=Object.assign({employeeNo:no,active:true},EMPS[no]||{},u); n++; cnt++;
+    if(cnt>=400){ await b.commit(); b=db.batch(); cnt=0; } }
+  if(cnt) await b.commit(); inp.value=''; renderEmp(); fillDeptSelects();
+  toast(`Đã nhập/cập nhật ${n} nhân viên, gán tổ được ${matched}.`+(newDept.size?` ${newDept.size} bộ phận chưa có trong app: ${[...newDept].slice(0,6).join(', ')} — tạo bộ phận đúng tên đó rồi nhập lại.`:''),8000);
 }
 
 /* ===================== CẤU HÌNH ===================== */

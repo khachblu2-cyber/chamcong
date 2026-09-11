@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.0.0
+ Phiên bản : V1.0.1
  Ngày      : 10/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,8 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.0.1 – Nhúng sẵn firebaseConfig của project chamcongcbt (không
+            phải dán key mỗi lần).
    V1.0.0 – Bản đầu: đăng nhập, Hôm nay, Tháng, Lương, Nhân viên,
             Cấu hình; lõi tính ca (core) đã test 11 trường hợp.
 ==========================================================
@@ -107,7 +109,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.0</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.1</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="month">Tháng</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -178,9 +180,12 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 <script>
 /* ===================== FIREBASE ===================== */
 const firebaseConfig = {
-  apiKey: "DÁN_API_KEY_TẠI_ĐÂY",
+  apiKey: "AIzaSyDWy3mHuY0R45achQu4ISaWgnjFdkld8oA",
   authDomain: "chamcongcbt.firebaseapp.com",
   projectId: "chamcongcbt",
+  storageBucket: "chamcongcbt.firebasestorage.app",
+  messagingSenderId: "680106167047",
+  appId: "1:680106167047:web:63a7f17029bf6aadfb93a2"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();

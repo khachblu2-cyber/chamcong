@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.0.7
+ Phiên bản : V1.0.8
  Ngày      : 10/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,9 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.0.8 – Sửa lỗi bộ đệm sự kiện khoá theo SỐ người: hai tổ cùng sĩ số
+            (IQF Cầm / IQF Bé = 31) lấy nhầm dữ liệu của nhau -> toàn 0.
+            Khoá theo đúng danh sách mã NV.
    V1.0.7 – Bắt lỗi ghi Firestore ở mọi chỗ lưu: báo đỏ rõ ràng (rules
             chưa deploy / index đang xây), không cập nhật màn hình khi
             ghi thất bại (trước đây hiện như đã lưu nhưng thoát ra mất).
@@ -134,7 +137,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.7</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.8</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="month">Tháng</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -397,7 +400,7 @@ function rulesOf(deptId){ return Object.assign({},DEFAULT_RULES,(DEPTS[deptId]&&
 
 /* Lấy sự kiện quét của danh sách NV trong khoảng ngày [from,to] (VN), có đệm 1 ngày trước/sau để bắt ca đêm */
 async function loadEvents(empNos, from, to, force){
-  const key=empNos.join(',').length+'|'+from+'|'+to+'|'+empNos.length;
+  const key=[...empNos].sort().join(',')+'|'+from+'|'+to; // khoá theo đúng danh sách mã NV
   if(!force && EVCACHE[key]) return EVCACHE[key];
   const t0=TS.fromMillis(vnMs(addDays(from,-1),'00:00')), t1=TS.fromMillis(vnMs(addDays(to,2),'00:00'));
   const out=[]; const chunks=[]; for(let i=0;i<empNos.length;i+=30) chunks.push(empNos.slice(i,i+30));

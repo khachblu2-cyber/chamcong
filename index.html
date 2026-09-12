@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.0.5
+ Phiên bản : V1.0.7
  Ngày      : 10/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,12 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.0.7 – Bắt lỗi ghi Firestore ở mọi chỗ lưu: báo đỏ rõ ràng (rules
+            chưa deploy / index đang xây), không cập nhật màn hình khi
+            ghi thất bại (trước đây hiện như đã lưu nhưng thoát ra mất).
+   V1.0.6 – Nhập Excel: nhóm "nghỉ việc" trên Hik -> không tạo bộ phận,
+            tắt Đang làm; chuẩn hoá khoảng trắng tên nhóm; người nằm
+            thẳng ở cấp công ty -> chưa gán tổ.
    V1.0.5 – Hôm nay: chọn nhiều bộ phận (tick, có "Tất cả"), danh sách
             nhóm theo bộ phận; ngày hiện tại người chưa quét ra hiện
             "Đang làm · Xh tính đến giờ" (xanh), ngày đã qua mới báo đỏ;
@@ -103,7 +109,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .login{max-width:380px;margin:60px auto;background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px}
 .login h2{margin:0 0 4px;color:var(--blue)}.login p{margin:0 0 14px;color:var(--muted);font-size:13px}
 .err{color:var(--rust);font-size:13px;margin:6px 0}
-.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:6px;font-size:14px;z-index:30;display:none;max-width:90%}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);white-space:pre-line;color:#fff;padding:10px 16px;border-radius:6px;font-size:14px;z-index:30;display:none;max-width:90%}
 .hide{display:none!important}
 .pop{position:absolute;top:100%;left:0;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:6px 0;width:280px;max-height:60vh;overflow:auto;z-index:15;font-size:14px}
 .pop label{display:flex;gap:8px;align-items:center;padding:7px 14px;cursor:pointer}.pop label.all{border-bottom:1px solid var(--line);font-weight:700}
@@ -128,7 +134,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.5</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.0.7</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="month">Tháng</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -309,6 +315,8 @@ const pad=n=>String(n).padStart(2,'0');
 function todayVN(){ return vnDate(Date.now()); }
 function addDays(ds,n){ const d=new Date(ds+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
 function monthDays(ym){ const [y,m]=ym.split('-').map(Number); return new Date(Date.UTC(y,m,0)).getUTCDate(); }
+function errMsg(e){ const m=String(e&&e.message||e); if(/permission|insufficient/i.test(m)) return 'KHÔNG LƯU ĐƯỢC: Firestore từ chối ghi (rules chưa deploy hoặc chưa bật Anonymous). Chạy lại "firebase deploy" rồi thử lại.'; if(/index/i.test(m)) return 'Firestore đang xây index, chờ 2–5 phút rồi thử lại.'; return 'LỖI: '+m; }
+window.addEventListener('unhandledrejection',e=>{ console.error(e.reason); toast(errMsg(e.reason),8000); });
 function toast(m,ms=2500){ const t=$('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none',ms); }
 async function sha256(s){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
 function openModal(html){ $('#modal').innerHTML=html; $('#dim').classList.add('show'); }
@@ -345,7 +353,7 @@ async function createFirstAdmin(){
   const u=$('#lu').value.trim().toLowerCase(), p=$('#lp').value, n=$('#fn').value.trim();
   if(!u||p.length<4||!n){ $('#lerr').textContent='Điền đủ tên đăng nhập, mật khẩu (≥4 ký tự), họ tên.'; return; }
   const chk=await db.collection('users').limit(1).get(); if(!chk.empty){ $('#lerr').textContent='Đã có tài khoản, không tạo được nữa.'; return; }
-  await db.collection('users').doc(u).set({name:n,passHash:await sha256(p),role:'admin',depts:[],active:true,createdAt:TS.now()});
+  try{ await db.collection('users').doc(u).set({name:n,passHash:await sha256(p),role:'admin',depts:[],active:true,createdAt:TS.now()}); }catch(e){ $('#lerr').textContent=errMsg(e); return; }
   toast('Đã tạo tài khoản quản trị'); doLogin();
 }
 function logout(){ sessionStorage.removeItem('cc_me'); location.reload(); }
@@ -517,7 +525,7 @@ async function saveAdj(no,date){
   if(!a.reason){ toast('Phải chọn lý do.'); return; }
   if(!a.xc&&!a.inTime&&!a.outTime){ toast('Chưa sửa gì: nhập giờ vào/ra hoặc chọn xả ca.'); return; }
   const ref=db.collection('adjustments').doc(no+'_'+date);
-  await ref.set(a); await ref.collection('log').add(a);
+  try{ await ref.set(a); await ref.collection('log').add(a); }catch(e){ toast(errMsg(e),8000); return; }
   toast('Đã lưu điều chỉnh'); closeModal(); reloadAfterAdj();
 }
 async function delAdj(no,date){ if(!confirm('Xoá điều chỉnh này, quay về số máy quét?')) return; const ref=db.collection('adjustments').doc(no+'_'+date); await ref.collection('log').add({by:ME.name,byUser:ME.username,at:TS.now(),deleted:true,reason:'xoá điều chỉnh'}); await ref.delete(); toast('Đã xoá'); closeModal(); reloadAfterAdj(); }
@@ -585,7 +593,7 @@ function renderPay(){
 function payEdit(no,k,v){ PAYEDIT[no]=Object.assign(PAYEDIT[no]||{},{[k]:k==='ghiChu'?v:Number(String(v).replace(/[^\d.-]/g,''))||0}); $('#pSave').disabled=false; renderPay(); }
 async function savePayEdits(){ const {ym,pmap}=PAY; const b=db.batch(); let n=0;
   for(const no in PAYEDIT){ const cur=Object.assign({employeeNo:no,ym,baoHiem:EMPS[no]&&EMPS[no].baoHiem||0,bu:0,ghiChu:''},pmap[no]||{},PAYEDIT[no],{by:ME.name,at:TS.now()}); b.set(db.collection('payroll').doc(ym+'_'+no),cur); pmap[no]=cur; n++; }
-  await b.commit(); PAYEDIT={}; $('#pSave').disabled=true; toast('Đã lưu '+n+' dòng'); }
+  try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; } PAYEDIT={}; $('#pSave').disabled=true; toast('Đã lưu '+n+' dòng'); }
 function exportPay(){
   if(!PAY) return; const {dept,ym,rows,pmap}=PAY; const R=rulesOf(dept);
   const hdr=['STT','Mã NV','Họ và tên','Hệ','Giờ làm','Tăng ca (giờ)','Ngày công','Phần cơm',`Tiền lương (${R.donGiaGio/1000}K/giờ)`,`Tăng ca (${R.donGiaTC/1000}K/giờ)`,`Tiền cơm (${R.donGiaCom/1000}K/phần)`,'Bao tay','Chuyên cần','Bù / khác','Tổng tiền','Trừ tiền bảo hiểm','Thực lĩnh','Ký nhận','Ghi chú'];
@@ -614,7 +622,7 @@ function renderEmp(){
     <td class="small">${e.lastSeen?new Date(e.lastSeen.toMillis()).toLocaleDateString('vi-VN'):''}</td>
     <td><input type="checkbox" ${e.active!==false?'checked':''} onchange="empSet('${esc(e.employeeNo)}','active',this.checked)"></td></tr>`).join('')+`</table><div class="small" style="padding:8px">${list.length} nhân viên</div>`;
 }
-async function empSet(no,k,v){ EMPS[no][k]=v; await db.collection('employees').doc(no).set({[k]:v,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); toast('Đã lưu '+no); if(k==='boPhan') fillDeptSelects(); }
+async function empSet(no,k,v){ try{ await db.collection('employees').doc(no).set({[k]:v,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); EMPS[no][k]=v; toast('Đã lưu '+no); if(k==='boPhan') fillDeptSelects(); }catch(e){ toast(errMsg(e),8000); renderEmp(); } }
 async function bulkAssign(){ if(!eSel.size){ toast('Chưa tick chọn nhân viên nào.'); return; }
   openModal(`<h3>Gán tổ cho ${eSel.size} nhân viên</h3><div class="fld"><label>Tổ / bộ phận</label><select id="bDept">${Object.keys(DEPTS).map(d=>`<option value="${d}">${esc(DEPTS[d].ten)}</option>`).join('')}</select></div><div class="fld"><label>Công ty (để trống = giữ nguyên)</label><input id="bCty"></div><div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="bulkAssignDo()">Gán</button></div>`); }
 async function bulkAssignDo(){ const d=$('#bDept').value, c=$('#bCty').value.trim(); const b=db.batch(); for(const no of eSel){ const u={boPhan:d,updatedAt:TS.now(),updatedBy:ME.username}; if(c) u.congTy=c; b.set(db.collection('employees').doc(no),u,{merge:true}); Object.assign(EMPS[no],u); } await b.commit(); toast('Đã gán '+eSel.size+' người'); eSel.clear(); closeModal(); fillDeptSelects(); renderEmp(); }
@@ -627,26 +635,32 @@ async function importEmp(inp){
   const hdr=rows[hi].map(norm); const fi=re=>hdr.findIndex(h=>re.test(h));
   const ci={no:fi(/^(id|mã nv|mã|ma nv|employee ?no|employee id)$/),name:fi(/^(tên riêng|họ tên|họ và tên|tên|name|full name)$/),ho:fi(/^(họ|last name)$/),dept:fi(/bộ phận|bo phan|^tổ|phòng ban|department|group|nhóm/),he:fi(/^(hệ|he|hệ số)$/),cty:fi(/công ty|cong ty|company/),chucVu:fi(/chức vụ|position/)};
   const deptByName={}; for(const id in DEPTS) deptByName[DEPTS[id].ten.trim().toLowerCase()]=id;
-  let n=0,matched=0,created=[]; let b=db.batch(), cnt=0;
-  const flush=async()=>{ if(cnt){ await b.commit(); b=db.batch(); cnt=0; } };
+  let n=0,matched=0,nghi=0,created=[]; let b=db.batch(), cnt=0;
+  const COMPANY_NAMES=new Set(['châu bá thảo','châu cẩm','tấn khởi','hồng đồng']);
+  const pending=[];
+  const flush=async()=>{ if(cnt){ try{ await b.commit(); }catch(e){ toast(errMsg(e)+`\nĐã lưu ${n-pending.length} người trước khi lỗi.`,10000); inp.value=''; throw e; } pending.forEach(([no,u])=>{ EMPS[no]=Object.assign({employeeNo:no,active:true},EMPS[no]||{},u); }); pending.length=0; b=db.batch(); cnt=0; } };
   for(const r of rows.slice(hi+1)){ const no=String(r[ci.no]||'').trim(); let name=String(r[ci.name]||'').trim(); if(ci.ho>=0&&r[ci.ho]&&String(r[ci.ho]).trim()!=='--') name=(String(r[ci.ho]).trim()+' '+name).trim(); if(!no||!name) continue;
     const u={updatedAt:TS.now(),updatedBy:ME.username};
     const cv=name.match(/\((.+?)\)\s*$/); if(cv){ u.chucVu=titleCase(cv[1]); name=name.replace(/\s*\(.+?\)\s*$/,'').trim(); }
     u.name=titleCase(name);
     if(ci.chucVu>=0&&r[ci.chucVu]) u.chucVu=String(r[ci.chucVu]).trim();
     if(ci.he>=0&&r[ci.he]) u.he=Number(r[ci.he])||1; if(ci.cty>=0&&r[ci.cty]) u.congTy=String(r[ci.cty]).trim();
-    if(ci.dept>=0&&r[ci.dept]){ const parts=String(r[ci.dept]).split('/').map(x=>x.trim()).filter(Boolean); const dn=parts[parts.length-1]||'';
+    if(ci.dept>=0&&r[ci.dept]){ const parts=String(r[ci.dept]).split('/').map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean); let dn=parts[parts.length-1]||'';
       // 3 cấp: Gốc/Công ty/Bộ phận -> công ty = cấp áp chót; 2 cấp: Công ty/Bộ phận
       if(parts.length>=3&&!u.congTy) u.congTy=parts[parts.length-2]; else if(parts.length===2&&!u.congTy) u.congTy=parts[0];
+      // Nhóm "nghỉ việc" trên Hik -> không tạo bộ phận, đánh dấu ngừng làm
+      if(/ngh[iỉĩ]\s*(việc|viec)|nv ngh[iỉĩ]|nhân viên ngh[iỉĩ]|đã ngh[iỉĩ]/i.test(dn)){ u.active=false; u.boPhan=''; u.ghiChuHik=dn; nghi++; dn=''; }
+      else if(parts.length===2&&COMPANY_NAMES.has(dn.toLowerCase())){ dn=''; } // nằm ở cấp công ty, chưa có tổ
+      else u.active=true;
       let id=deptByName[dn.toLowerCase()];
       if(!id&&dn){ id=slug(dn).toLowerCase().replace(/^-+|-+$/g,'')||('bp-'+Object.keys(DEPTS).length); if(DEPTS[id]) id+='-'+Object.keys(DEPTS).length;
         const d={ten:dn,congTy:u.congTy||'',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+1,createdAt:TS.now(),createdBy:ME.username,autoCreated:true};
         b.set(db.collection('departments').doc(id),d); cnt++; DEPTS[id]=d; deptByName[dn.toLowerCase()]=id; created.push(dn); }
       if(id){ u.boPhan=id; matched++; } }
-    b.set(db.collection('employees').doc(no),u,{merge:true}); EMPS[no]=Object.assign({employeeNo:no,active:true},EMPS[no]||{},u); n++; cnt++;
+    b.set(db.collection('employees').doc(no),u,{merge:true}); pending.push([no,u]); n++; cnt++;
     if(cnt>=400) await flush(); }
   await flush(); inp.value=''; fillDeptSelects(); renderEmp();
-  toast(`Đã nhập/cập nhật ${n} nhân viên, gán tổ ${matched}.`+(created.length?` Tự tạo ${created.length} bộ phận mới (đơn giá mặc định, vào Cấu hình chỉnh): ${created.slice(0,8).join(', ')}${created.length>8?'…':''}`:''),9000);
+  toast(`Đã nhập/cập nhật ${n} nhân viên, gán tổ ${matched}${nghi?`, ${nghi} người thuộc nhóm nghỉ việc đã tắt`:''}.`+(created.length?` Tự tạo ${created.length} bộ phận mới (đơn giá mặc định, vào Cấu hình chỉnh): ${created.slice(0,8).join(', ')}${created.length>8?'…':''}`:''),9000);
 }
 
 /* ===================== CẤU HÌNH ===================== */
@@ -665,7 +679,7 @@ function renderCfg(){
 function newDept(){ const id=prompt('Mã bộ phận (không dấu, vd: xep-hop, cap-dong, bc-son):'); if(!id) return; const k=slug(id).toLowerCase(); if(DEPTS[k]){ toast('Đã có mã này'); return; } DEPTS[k]={ten:id,congTy:'Châu Bá Thảo',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+1}; fillDeptSelects(); $('#cDept').value=k; renderCfg(); toast('Sửa tên/đơn giá rồi bấm Lưu bộ phận'); }
 async function saveDept(){ const id=$('#cDept').value; if(!id) return; const rules={}; $$('#cfgBody input[data-r]').forEach(i=>{ rules[i.dataset.r]=Number(String(i.value).replace(/[^\d.]/g,''))||0; });
   const d={ten:$('#cTen').value.trim()||id,congTy:$('#cCty').value.trim(),thuTu:Number($('#cThuTu').value)||0,kieu:$('#cKieu').value,rules,updatedAt:TS.now(),updatedBy:ME.username};
-  await db.collection('departments').doc(id).set(d,{merge:true}); DEPTS[id]=Object.assign(DEPTS[id]||{},d); fillDeptSelects(); $('#cDept').value=id; Object.keys(EVCACHE).forEach(k=>delete EVCACHE[k]); toast('Đã lưu bộ phận '+d.ten); }
+  try{ await db.collection('departments').doc(id).set(d,{merge:true}); }catch(e){ toast(errMsg(e),8000); return; } DEPTS[id]=Object.assign(DEPTS[id]||{},d); fillDeptSelects(); $('#cDept').value=id; Object.keys(EVCACHE).forEach(k=>delete EVCACHE[k]); toast('Đã lưu bộ phận '+d.ten); }
 async function renderUsers(){ const q=await db.collection('users').get(); const box=$('#usersBox'); if(!box) return;
   box.innerHTML='<table><tr><th>Đăng nhập</th><th class="l">Họ tên</th><th>Vai trò</th><th class="l">Bộ phận (tổ trưởng)</th><th>Hoạt động</th><th></th></tr>'+q.docs.map(x=>{const u=x.data(); return `<tr><td>${esc(x.id)}</td><td class="l">${esc(u.name)}</td><td>${{admin:'Quản trị',ketoan:'Kế toán',totruong:'Tổ trưởng'}[u.role]||u.role}</td><td class="l">${(u.depts||[]).map(d=>DEPTS[d]?esc(DEPTS[d].ten):d).join(', ')}</td><td>${u.active===false?'Khoá':'✓'}</td><td><button class="btn sm" onclick="editUser('${esc(x.id)}')">Sửa</button></td></tr>`;}).join('')+'</table>'; }
 async function editUser(id){ const u=id?(await db.collection('users').doc(id).get()).data():{role:'totruong',depts:[],active:true};
@@ -677,5 +691,5 @@ async function editUser(id){ const u=id?(await db.collection('users').doc(id).ge
    <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="saveUser('${esc(id)}')">Lưu</button></div>`); }
 async function saveUser(id){ const nid=(id||$('#uId').value).trim().toLowerCase(); const name=$('#uName').value.trim(), p=$('#uPass').value; if(!nid||!name){ toast('Thiếu tên đăng nhập / họ tên'); return; } if(!id&&p.length<4){ toast('Mật khẩu ≥4 ký tự'); return; }
   const u={name,role:$('#uRole').value,depts:$$('.uDept:checked').map(c=>c.value),active:$('#uActive').checked,updatedAt:TS.now(),updatedBy:ME.username}; if(p) u.passHash=await sha256(p); if(!id) u.createdAt=TS.now();
-  await db.collection('users').doc(nid).set(u,{merge:true}); closeModal(); toast('Đã lưu tài khoản'); renderUsers(); }
+  try{ await db.collection('users').doc(nid).set(u,{merge:true}); }catch(e){ toast(errMsg(e),8000); return; } closeModal(); toast('Đã lưu tài khoản'); renderUsers(); }
 </script></body></html>

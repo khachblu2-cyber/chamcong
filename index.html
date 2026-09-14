@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.2.2
+ Phiên bản : V1.2.3
  Ngày      : 10/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,10 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.2.3 – Sửa dòng "Giờ tổ trưởng" tab Tháng lệch 1 cột (còn ô Hệ cũ);
+            mặc định tổ trưởng chỉ tab Chấm công + Tháng; hộp tài khoản:
+            Tab lên trên, bộ phận/tab dạng lưới 2 cột; nút Xoá bộ phận
+            (chỉ khi không còn nhân viên gán).
    V1.2.2 – (1) ghim: gom thanh lọc + thẻ/khung giờ/thanh nút thành 1 khối
             sticky, hết chồng; (2) Tháng bỏ cột Hệ; tổ trưởng xem gọn (ngày
             + Tổng/Giờ làm/TC) và chỉ tháng hiện tại; (3) tổ trưởng tối đa
@@ -180,7 +184,8 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
 .he{width:52px;border:1px solid var(--line);border-radius:4px;padding:2px 4px;text-align:center;font-weight:600}
 #bcTbl th,#bcTbl td{font-size:14px;padding:7px 8px}#bcTbl td.y{background:#FFF6BF;font-weight:700}#bcTbl td.r{color:var(--rust);font-weight:700}#bcTbl td.warn{background:var(--rust-soft);color:var(--rust);font-weight:700}#bcTbl td.note{text-align:left;font-size:12.5px}#bcTbl h2{text-align:center;font-size:20px;margin:12px 0 8px}
 .small{font-size:12px;color:var(--muted)}
-.chk{display:flex;gap:6px;align-items:center;font-size:14px;padding:4px 0}
+.chk{display:flex;gap:6px;align-items:center;font-size:14px;padding:4px 0}.chk input[type=checkbox]{width:18px;height:18px;flex:none;margin:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;border:1px solid var(--line);border-radius:6px;padding:6px 10px;max-height:40vh;overflow:auto}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (min-width:900px){.wrap{padding:14px 18px 80px}.list{padding:0 18px 80px}}
@@ -196,7 +201,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.2.2</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.2.3</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -287,7 +292,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
 
 <!-- CẤU HÌNH -->
 <section id="tab-cfg" class="hide">
-  <div class="bar"><select id="cDept" class="chip" onchange="renderCfg()"></select><button class="btn sm" onclick="newDept()">+ Bộ phận mới</button><span style="flex:1"></span><button class="btn sm p" onclick="saveDept()">Lưu bộ phận</button></div>
+  <div class="bar"><select id="cDept" class="chip" onchange="renderCfg()"></select><button class="btn sm" onclick="newDept()">+ Bộ phận mới</button><span style="flex:1"></span><button class="btn sm danger" onclick="delDept()">Xoá bộ phận</button><button class="btn sm p" onclick="saveDept()">Lưu bộ phận</button></div>
   <div class="wrap" id="cfgBody"></div>
 </section>
 </div>
@@ -494,7 +499,7 @@ async function createFirstAdmin(){
 }
 function logout(){ sessionStorage.removeItem('cc_me'); location.reload(); }
 const TAB_LIST=[['today','Hôm nay'],['cham','Chấm công'],['month','Tháng'],['bc','Báo cáo ngày'],['pay','Lương'],['emp','Nhân viên'],['cfg','Cấu hình']];
-const ROLE_TABS={admin:['today','cham','month','bc','pay','emp','cfg'],ketoan:['today','cham','month','bc','pay','emp'],totruong:['today','cham','month']};
+const ROLE_TABS={admin:['today','cham','month','bc','pay','emp','cfg'],ketoan:['today','cham','month','bc','pay','emp'],totruong:['cham','month']};
 function myTabs(){ let t=(ME.tabs&&ME.tabs.length)?ME.tabs:ROLE_TABS[ME.role]||['today']; if(ME.role!=='admin') t=t.filter(x=>x!=='cfg'); return t; }
 function can(x){ // quyền
   const r=ME.role;
@@ -877,7 +882,7 @@ function renderMonth(){
   const lite=ME.role==='totruong'; // tổ trưởng: chỉ ngày + Tổng giờ / Giờ làm / TC
   let h=`<table><tr><th rowspan="2">STT</th><th class="l stk" rowspan="2">Họ tên</th><th colspan="${n}">Ngày (${tu?'giờ chấm':'tổng giờ có mặt'})</th><th rowspan="2">Tổng giờ</th><th rowspan="2">Giờ làm</th><th rowspan="2">TC</th>${lite?'':`<th rowspan="2">Công</th><th rowspan="2">XC</th>${tu?'<th rowspan="2">P</th>':''}<th rowspan="2">Cơm</th><th rowspan="2">ABC</th>${tu?'<th rowspan="2">Máy</th><th rowspan="2">Chấm</th><th rowspan="2">Lệch</th>':'<th rowspan="2">Điều chỉnh</th>'}`}</tr><tr>`;
   for(let i=1;i<=n;i++) h+=`<th>${i}</th>`; h+='</tr>';
-  if(tu){ h+=`<tr><td></td><td class="l stk" style="background:var(--paper);font-weight:600">Giờ tổ trưởng</td><td></td>`; for(let i=1;i<=n;i++){ const l=lineOf(dept,ym+'-'+pad(i)); if(!l) h+=`<td class="z">–</td>`; else if(l.xc) h+=`<td class="xc">XC</td>`; else { const L=lineBounds(l); const t=finishDay({},L.hours,R); h+=`<td title="${l.inTime}–${l.outTime}">${fmtH(t.gioLam)}${t.tc?'+'+fmtH(t.tc):''}</td>`; } } h+=`<td colspan="12" style="text-align:left;color:var(--muted)">tổ trưởng chốt mỗi ngày · – = chưa chốt</td></tr>`; }
+  if(tu){ h+=`<tr><td></td><td class="l stk" style="background:var(--paper);font-weight:600">Giờ tổ trưởng</td>`; for(let i=1;i<=n;i++){ const l=lineOf(dept,ym+'-'+pad(i)); if(!l) h+=`<td class="z">–</td>`; else if(l.xc) h+=`<td class="xc">XC</td>`; else { const L=lineBounds(l); const t=finishDay({},L.hours,R); h+=`<td title="${l.inTime}–${l.outTime}">${fmtH(t.gioLam)}${t.tc?'+'+fmtH(t.tc):''}</td>`; } } h+=`<td colspan="12" style="text-align:left;color:var(--muted)">tổ trưởng chốt mỗi ngày · – = chưa chốt</td></tr>`; }
   rows.forEach((r,ri)=>{ const e=r.emp,m=r.month; tot.gio+=m.gio;tot.gioLam+=m.gioLam;tot.tc+=m.tc;tot.cong+=m.cong;tot.xc+=m.xc;tot.com+=m.com;tot.thieu+=m.thieuRa;tot.adj+=m.dieuChinh;tot.p+=m.p||0;tot.may+=m.may||0;tot.warn+=m.warn||0;tot.chuaChot+=m.chuaChot||0;
     h+=`<tr><td>${ri+1}</td><td class="l stk">${esc(e.name)}</td>`;
     for(let i=1;i<=n;i++){ const date=ym+'-'+pad(i); const d=r.days[date]; let cls='clk',txt='';
@@ -1081,6 +1086,11 @@ function renderCfg(){
   $('#cfgBody').innerHTML=h; renderUsers();
 }
 function newDept(){ const id=prompt('Mã bộ phận (không dấu, vd: xep-hop, cap-dong, bc-son):'); if(!id) return; const k=slug(id).toLowerCase(); if(DEPTS[k]){ toast('Đã có mã này'); return; } DEPTS[k]={ten:id,congTy:'Châu Bá Thảo',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+1}; fillDeptSelects(); $('#cDept').value=k; renderCfg(); toast('Sửa tên/đơn giá rồi bấm Lưu bộ phận'); }
+async function delDept(){ const id=$('#cDept').value; if(!id||!DEPTS[id]) return; const n=Object.values(EMPS).filter(e=>e.boPhan===id).length;
+  if(n){ toast(`Bộ phận còn ${n} nhân viên đang gán — chuyển họ sang tổ khác (tab Nhân viên) rồi mới xoá.`,7000); return; }
+  if(!confirm(`Xoá bộ phận "${DEPTS[id].ten}"? Giờ chuyền/ngày đã chốt của tổ này (nếu có) vẫn được giữ trong dữ liệu.`)) return;
+  try{ await db.collection('departments').doc(id).delete(); }catch(e){ toast(errMsg(e),8000); return; }
+  delete DEPTS[id]; fillDeptSelects(); renderCfg(); toast('Đã xoá bộ phận'); }
 async function saveDept(){ const id=$('#cDept').value; if(!id) return; const rules={}; $$('#cfgBody input[data-r]').forEach(i=>{ rules[i.dataset.r]=Number(String(i.value).replace(/[^\d.]/g,''))||0; }); $$('#cfgBody input[data-r2]').forEach(i=>{ rules[i.dataset.r2]=i.value; });
   const d={ten:$('#cTen').value.trim()||id,tenHik:$('#cTenHik').value.trim(),congTy:$('#cCty').value.trim(),thuTu:Number($('#cThuTu').value)||0,kieu:$('#cKieu').value,tuCham:$('#cTuCham').checked,rules,updatedAt:TS.now(),updatedBy:ME.username};
   try{ await db.collection('departments').doc(id).set(d,{merge:true}); }catch(e){ toast(errMsg(e),8000); return; } DEPTS[id]=Object.assign(DEPTS[id]||{},d); fillDeptSelects(); $('#cDept').value=id; Object.keys(EVCACHE).forEach(k=>delete EVCACHE[k]); toast('Đã lưu bộ phận '+d.ten); }
@@ -1090,8 +1100,8 @@ async function editUser(id){ const u=id?(await db.collection('users').doc(id).ge
   openModal(`<h3>${id?'Sửa tài khoản':'Tài khoản mới'}</h3><div class="fld"><label>Tên đăng nhập</label><input id="uId" value="${esc(id)}" ${id?'disabled':''} autocapitalize="off" autocorrect="off" spellcheck="false"></div><div class="fld"><label>Họ tên</label><input id="uName" value="${esc(u.name||'')}"></div>
    <div class="fld"><label>Mật khẩu ${id?'(để trống = giữ nguyên)':''}</label><input id="uPass" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="chữ thường/hoa đúng như sẽ gõ"></div>
    <div class="fld"><label>Vai trò</label><select id="uRole"><option value="totruong" ${u.role==='totruong'?'selected':''}>Tổ trưởng — xem & điều chỉnh tổ mình</option><option value="ketoan" ${u.role==='ketoan'?'selected':''}>Kế toán — tất cả tổ, lương, nhân viên</option><option value="admin" ${u.role==='admin'?'selected':''}>Quản trị — thêm cấu hình & tài khoản</option></select></div>
-   <div class="fld"><label>Bộ phận được xem (tổ trưởng)</label>${Object.keys(DEPTS).map(d=>`<label class="chk"><input type="checkbox" class="uDept" value="${d}" ${(u.depts||[]).includes(d)?'checked':''}>${esc(DEPTS[d].ten)}</label>`).join('')}</div>
-   <div class="fld"><label>Tab được dùng (để trống = theo vai trò)</label>${TAB_LIST.map(([k,lb])=>`<label class="chk" style="display:inline-flex;margin-right:10px"><input type="checkbox" class="uTab" value="${k}" ${(u.tabs||[]).includes(k)?'checked':''}>${lb}</label>`).join('')}</div>
+   <div class="fld"><label>Tab được dùng (để trống = theo vai trò: tổ trưởng = Chấm công + Tháng)</label><div class="grid2">${TAB_LIST.map(([k,lb])=>`<label class="chk"><input type="checkbox" class="uTab" value="${k}" ${(u.tabs||[]).includes(k)?'checked':''}> ${lb}</label>`).join('')}</div></div>
+   <div class="fld"><label>Bộ phận được xem (tổ trưởng)</label><div class="grid2">${Object.keys(DEPTS).sort((a,b)=>DEPTS[a].ten.localeCompare(DEPTS[b].ten)).map(d=>`<label class="chk"><input type="checkbox" class="uDept" value="${d}" ${(u.depts||[]).includes(d)?'checked':''}> ${esc(DEPTS[d].ten)}</label>`).join('')}</div></div>
    <label class="chk"><input type="checkbox" id="uActive" ${u.active!==false?'checked':''}> Đang hoạt động</label>
    <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="saveUser('${esc(id)}')">Lưu</button></div>`); }
 async function saveUser(id){ const nid=(id||$('#uId').value).trim().toLowerCase(); const name=$('#uName').value.trim(), p=$('#uPass').value; if(!nid||!name){ toast('Thiếu tên đăng nhập / họ tên'); return; } if(!id&&p.length<4){ toast('Mật khẩu ≥4 ký tự'); return; }

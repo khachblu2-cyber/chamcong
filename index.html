@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.3.0
+ Phiên bản : V1.3.1
  Ngày      : 10/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,9 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.3.1 – Ngày chưa chốt giờ (tổ đã bật chấm tổ trưởng) cũng ghép ca theo
+            khung giờ mặc định của tổ trong Cấu hình, cùng 1 cách với ngày
+            đã chốt — hết lệch do lượt quét lẻ giữa ca.
    V1.3.0 – (A) Ghép ca: ngày đã chốt giờ lấy lượt quét đầu/cuối trong khung
             [vào−4h, ra+6h] của giờ tổ trưởng; ngày chưa chốt: ca ngắn hơn
             1h coi như chưa kết thúc (sửa lỗi quét 2 lần lúc vào cách >2
@@ -209,7 +212,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.3.0</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.3.1</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -633,8 +636,9 @@ function computeDept(deptId, events, from, to){
   for(const ev of events){ const b=byEmp[String(ev.employeeNo)]; if(b) b.scans.push(ev); }
   for(const no in byEmp){
     const b=byEmp[no]; const byDate={}; const used=new Set();
-    if(tuCham){ // (A1) ngày đã chốt giờ: lấy lượt quét đầu/cuối trong khung giờ tổ trưởng
-      for(let d=addDays(from,-1); d<=addDays(to,1); d=addDays(d,1)){ const l=lineOf(deptId,d); if(!l||l.xc) continue; const L=lineB(deptId,l,R); const ses=sessionInWindow(b.scans,L,used,R); if(ses){ ses.date=d; byDate[d]=ses; } } }
+    if(tuCham){ // (A1) ngày đã chốt giờ: khung giờ tổ trưởng; ngày chưa chốt: khung giờ mặc định của tổ (Cấu hình)
+      const dflt=diem?{inTime:R.caVao||'05:00',hetTime:R.caHet||'16:00',outTime:R.caHet||'16:00'}:{inTime:R.chuyenVao||'08:00',outTime:R.chuyenRa||'20:00'};
+      for(let d=addDays(from,-1); d<=addDays(to,1); d=addDays(d,1)){ let l=lineOf(deptId,d); if(l&&l.xc) continue; if(!l) l=Object.assign({date:d},dflt); const L=lineB(deptId,l,R); const ses=sessionInWindow(b.scans,L,used,R); if(ses){ ses.date=d; byDate[d]=ses; } } }
     const ss=buildSessions(b.scans.filter(x=>!used.has(x)),R); // (A2) còn lại: ghép ca theo khoảng cách
     for(const s of ss){ if(byDate[s.date]) continue; if(!byDate[s.date]||(s.outMs&&!byDate[s.date].outMs)) byDate[s.date]=s; }
     for(let d=from; d<=to; d=addDays(d,1)){

@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.3.9
+ Phiên bản : V1.4.0
  Ngày      : 16/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,10 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.4.0 – (1) Thống kê Chấm công thành nút: bấm số → nhóm đó lên đầu danh sách
+            (vạch ngăn), bấm lại bỏ lọc; đổi ngày/tổ tự bỏ lọc. (2) Điện thoại: khung
+            nhóm N1/N2/N3 mỗi nhóm 1 dòng (nhãn cùng dòng, "mai" thay Ra hôm sau);
+            hàng nút gồm →N1/N2/N3 dồn gọn.
    V1.3.9 – (1) Tổ đang chọn dùng chung Chấm công · Tháng · Lương · Cấu hình ·
             Nhân viên; Hôm nay mở tab chỉ tải tổ đang chọn (Tất cả/Cty chỉ dùng
             trong lần đó). (2) Tổ kiểu khung giờ TT: tóm tắt khung ghi đúng cơm theo
@@ -246,6 +250,7 @@ td.gv{background:#FFF8E1;font-weight:600}
 .line .sm2{font-size:13px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .line.xc{border-color:var(--muted);background:#EEF0F3}.line.closed{border-color:var(--moss);background:var(--moss-soft)}
 .stat{display:flex;gap:8px;padding:6px 12px;font-size:12px;color:var(--muted);flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);background:#fff}.stat b{color:var(--ink)}
+.stb{border:1px solid var(--line);background:#fff;border-radius:7px;padding:3px 8px;font:inherit;font-size:13px;cursor:pointer;color:inherit}.stb b{color:var(--ink)}.stb.on{background:var(--blue);color:#fff!important;border-color:var(--blue)}.stb.on b{color:#fff}.csep{border-top:3px double var(--blue);margin:2px 0}
 .sh{display:none}.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;font-weight:700;vertical-align:1px}.tag.n1{background:#CFDCF2;color:var(--blue)}.tag.n2{background:#F3E2B3;color:var(--amber)}.tag.n3{background:var(--moss-soft);color:var(--moss)}
 .tools{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:#fff;font-size:13px;flex-wrap:wrap}.tools .lbl{color:var(--muted)}
 .emp .cb{width:20px;height:20px;flex:none;margin:0}.emp.sel{outline:2px solid var(--blue);outline-offset:-2px}.names{font-size:13px;line-height:1.5;background:var(--paper);border-radius:6px;padding:8px 10px;margin-bottom:10px;max-height:160px;overflow:auto}
@@ -265,8 +270,9 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
   .lg,.emp .io .lg{display:none}.sh{display:inline}.sep{display:none}
   body{font-size:14px}
   .bar{padding:8px 10px;gap:6px}.chip,select.chip,input.chip{padding:6px 8px;font-size:13px}
-  #cLine{padding:8px 10px}.line{padding:8px 10px}.line h4{font-size:12px}.line .f{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px}.line .f input[type=time]{font-size:15px;padding:6px 4px;width:100%;min-width:0}.line .f{grid-template-columns:auto 1fr auto 1fr auto}.line .f .tag{grid-column:1/-1}.line .f .chk{font-size:12px;white-space:nowrap}.line .f .small{grid-column:1/-1;font-size:11px}.line .sm2{font-size:12px}
-  .tools{display:grid;grid-template-columns:auto repeat(5,1fr);gap:4px;padding:5px 8px;align-items:center}.tools .lbl{font-size:11.5px;white-space:nowrap;padding-right:2px}.tools .btn{padding:7px 2px;font-size:12px;white-space:nowrap}
+  #cLine{padding:8px 10px}.line{padding:8px 10px}.line h4{font-size:12px}.line .f{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px}.line .f input[type=time]{font-size:15px;padding:6px 4px;width:100%;min-width:0}.line .f{grid-template-columns:auto 1fr auto 1fr auto}.line .f.fg{grid-template-columns:auto auto 1fr auto 1fr auto}.line .f .tag{grid-column:auto;font-size:10px;padding:1px 4px}.line .f{margin-top:4px!important}.line .f .chk{font-size:12px;white-space:nowrap}.line .f .small{grid-column:1/-1;font-size:11px}.line .sm2{font-size:12px}
+  .tools{display:flex;flex-wrap:wrap;gap:4px;padding:5px 8px;align-items:center}.tools .lbl{font-size:11px;white-space:nowrap;padding-right:2px}.tools .btn{padding:6px 5px;font-size:11.5px;white-space:nowrap;flex:1 1 auto}
+  .stb{font-size:11.5px;padding:3px 5px}.stb b{font-size:12px}
   .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 6px;font-size:11.5px;padding:6px 10px}.stat>span,.stat>label{white-space:nowrap}
   .list{padding:0 6px 90px}.emp{padding:5px 2px;gap:5px}.emp .n{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52vw;line-height:1.25}.emp .io{font-size:12px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.emp .h b{font-size:15px}#tab-cham .emp .h small{display:none}#tab-cham .emp .flag{display:none}#tab-cham .emp .fsh{display:block;font-size:11px;font-weight:700;white-space:nowrap}.emp .fsh.a{color:var(--amber)}.emp .fsh.r{color:var(--rust)}.emp .fsh.g{color:var(--moss)}.emp .fsh.bl{color:var(--blue)}.emp .stt{width:14px;font-size:11px;min-width:14px}.emp .cb{width:17px;height:17px}
   .stat{grid-template-columns:repeat(4,1fr)}
@@ -288,7 +294,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.3.9</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.0</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -677,6 +683,8 @@ function fixSticky(){ const r=document.documentElement.style; const h=el=>{ cons
   const top=h('.top'), tabs=top+h('#tabs'); r.setProperty('--hTop',top+'px'); r.setProperty('--hTabs',tabs+'px');
   }
 window.addEventListener('resize',fixSticky); new MutationObserver(()=>fixSticky()).observe(document.body,{childList:true,subtree:true});
+let CFILTER=null; const CFILTER_LB={co:'Có mặt',ok:'Khớp',dangLam:'Đang làm',warn:'Chưa xác nhận',xn:'Đã xác nhận',thieu:'Chờ xử lý',p:'P',nghiCa:'Nghỉ ca',vang:'Vắng'};
+function setCFilter(k){ CFILTER=CFILTER===k?null:k; renderCham(); }
 const SYNC={dept:'',ym:''}; // V1.3.4: bộ phận + tháng đang xem, dùng chung Chấm công ↔ Tháng ↔ Lương
 function syncFrom(dept,ym){ if(dept) SYNC.dept=dept; if(ym) SYNC.ym=ym; }
 function syncTo(selId,monthId){ const s=$('#'+selId); if(s&&SYNC.dept&&s.querySelector(`option[value="${SYNC.dept}"]`)) s.value=SYNC.dept; const m=monthId?$('#'+monthId):null; if(m&&SYNC.ym&&!(ME.role==='totruong'&&monthId==='mMonth')) m.value=SYNC.ym; }
@@ -788,7 +796,7 @@ function lineOf(deptId,date){ return LINES[deptId+'_'+date]||null; }
 function fillChamDeptSel(){ const ids=myDepts().filter(isTuCham); const sel=$('#cDeptSel'); const v=sel.value; sel.innerHTML=ids.map(id=>`<option value="${id}">${esc(DEPTS[id].ten)}</option>`).join('')||'<option value="">(chưa bật tổ nào)</option>'; if(v&&ids.includes(v)) sel.value=v; }
 function shiftChamDay(n){ $('#cDate').value=addDays($('#cDate').value,n); loadCham(); }
 let CHAM=null, CHAMCTX=null;
-async function loadCham(force){ if(force){ try{ await loadBase(true); fillDeptSelects(); }catch(e){ toast(errMsg(e),6000); } } syncFrom($('#cDeptSel')&&$('#cDeptSel').value,($('#cDate')&&$('#cDate').value||'').slice(0,7));
+async function loadCham(force){ CFILTER=null; if(force){ try{ await loadBase(true); fillDeptSelects(); }catch(e){ toast(errMsg(e),6000); } } syncFrom($('#cDeptSel')&&$('#cDeptSel').value,($('#cDate')&&$('#cDate').value||'').slice(0,7));
   const dept=$('#cDeptSel').value, date=$('#cDate').value;
   if(!dept){ $('#cLine').innerHTML='<div class="note info">Chưa có bộ phận nào bật "Tổ trưởng tự chấm". Vào Cấu hình → tick "Tổ trưởng tự chấm (theo giờ tổ trưởng)" cho bộ phận cần dùng.</div>'; $('#cList').innerHTML=''; $('#cStat').innerHTML=''; $('#cFoot').innerHTML=''; return; }
   const emps=deptEmps(dept); const nos=emps.map(e=>String(e.employeeNo)); $('#cCount').textContent=nos.length+' NV';
@@ -809,23 +817,26 @@ function renderCham(){
   if(line&&!xc&&soNhom(dept)>1){ const parts=[]; for(let g=0;g<soNhom(dept);g++){ const v=lineVariant(line,g); if(!v||!v.inTime) continue; const cnt=rows.filter(r=>r.days[date].nhom===g&&r.days[date].in&&!r.days[date].isP).length; parts.push(`N${g+1} ${v.inTime}→${v.outTime}${dm?'':' = '+fmtH(lineBounds(v).hours)+'h'} · ${cnt} người`); } sum=parts.join(' · '); }
   const edit=canEditCham(dept,date);
   $('#cLine').innerHTML=`<div class="line ${xc?'xc':''} ${closed?'closed':''}"><h4>GIỜ TỔ TRƯỞNG ${fmtDateVN(date).toUpperCase()}${closed?' · ĐÃ CHỐT NGÀY':line?(xc?' · XC CẢ TỔ':' · đã chốt giờ'):' · <span style="color:var(--rust)">CHƯA CHỐT GIỜ</span>'}</h4>
-   <div class="f">${soNhom(dept)>1?'<span class="tag n1">N1</span>':''}<span>Vào</span><input type="time" id="lIn" value="${li}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut" value="${lo}" ${!edit?'disabled':''}>${dm?`<span class="small">${R._khungTT?`khung giờ tổ trưởng = ${R.diemDu||10} điểm · không TC · cơm qua mốc ${['comMoc1','comMoc2','comMoc3'].map(k=>R[k]).filter(Boolean).join(', ')||'(chưa đặt)'}`:`ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'} = ${R.diemDu||10} điểm · ra sau ${R.caHet||'16:00'} là tăng ca`}</span>`:''}<label class="chk"><input type="checkbox" id="lNext" ${nd?'checked':''} ${!edit?'disabled':''}> Ra hôm sau</label></div>
-   ${Array.from({length:soNhom(dept)-1},(_,k)=>{ const g=k+2; const G=(line&&line.groups&&line.groups[k])||{}; return `<div class="f" style="margin-top:6px"><span class="tag n${g}">N${g}</span><span>Vào</span><input type="time" id="lIn${g}" value="${line?(G.inTime||''):(cd?(R['nhomVao'+g]||''):'')}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut${g}" value="${line?(G.outTime||''):(cd?(R['nhomRa'+g]||''):'')}" ${!edit?'disabled':''}><label class="chk"><input type="checkbox" id="lNext${g}" ${G.outNextDay?'checked':''} ${!edit?'disabled':''}> Ra hôm sau</label></div>`; }).join('')}
+   <div class="f ${soNhom(dept)>1?'fg':''}">${soNhom(dept)>1?'<span class="tag n1">N1</span>':''}<span>Vào</span><input type="time" id="lIn" value="${li}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut" value="${lo}" ${!edit?'disabled':''}>${dm?`<span class="small">${R._khungTT?`khung giờ tổ trưởng = ${R.diemDu||10} điểm · không TC · cơm qua mốc ${['comMoc1','comMoc2','comMoc3'].map(k=>R[k]).filter(Boolean).join(', ')||'(chưa đặt)'}`:`ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'} = ${R.diemDu||10} điểm · ra sau ${R.caHet||'16:00'} là tăng ca`}</span>`:''}<label class="chk"><input type="checkbox" id="lNext" ${nd?'checked':''} ${!edit?'disabled':''}> <span class="lg">Ra hôm sau</span><span class="sh">mai</span></label></div>
+   ${Array.from({length:soNhom(dept)-1},(_,k)=>{ const g=k+2; const G=(line&&line.groups&&line.groups[k])||{}; return `<div class="f fg" style="margin-top:6px"><span class="tag n${g}">N${g}</span><span>Vào</span><input type="time" id="lIn${g}" value="${line?(G.inTime||''):(cd?(R['nhomVao'+g]||''):'')}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut${g}" value="${line?(G.outTime||''):(cd?(R['nhomRa'+g]||''):'')}" ${!edit?'disabled':''}><label class="chk"><input type="checkbox" id="lNext${g}" ${G.outNextDay?'checked':''} ${!edit?'disabled':''}> <span class="lg">Ra hôm sau</span><span class="sh">mai</span></label></div>`; }).join('')}
    <div class="sm2"><span>${sum||(cd?`Chưa chốt · giờ đã điền sẵn theo ca chuẩn, kiểm tra rồi bấm Chốt giờ (sửa nếu ngày này khác)`:dm?`Chưa chốt · nhập giờ Vào và giờ Ra tổ trưởng rồi bấm Chốt giờ (máy đang tạm tính theo ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'})`:`Chưa chốt · nhập giờ Vào/Ra rồi bấm Chốt giờ (máy đang tạm tính theo lượt quét đầu → cuối trong ngày)`)}</span><span>${line&&line.by?`<span class="small">${esc(line.by)} · ${line.at?new Date(line.at.toMillis()).toLocaleString('vi-VN'):''}</span> `:''}<button class="btn sm p" onclick="saveLine()" ${!edit?'disabled':''}>${line?'Cập nhật giờ':'Chốt giờ'}</button></span></div></div>`;
   // thanh công cụ theo tick
   const nSel=[...cSel].filter(no=>CHAM[no]).length;
   $('#cTools').innerHTML=edit?`<span class="lbl">Đã tick <b>${nSel}</b> →</span><button class="btn sm" style="border-color:var(--moss);color:var(--moss)" onclick="bulkCham('ttGio')"><span class="lg">Giờ theo TT</span><span class="sh">Giờ TT</span></button><button class="btn sm" style="border-color:var(--moss);color:var(--moss)" onclick="bulkCham('mayGio')"><span class="lg">Giờ theo máy</span><span class="sh">Giờ máy</span></button><button class="btn sm" onclick="bulkCham('xc')">XC</button><button class="btn sm" onclick="bulkCham('P')">P</button><button class="btn sm" onclick="bulkCham('reset')"><span class="lg">Về mặc định</span><span class="sh">Mặc định</span></button>${soNhom(dept)>1?Array.from({length:soNhom(dept)},(_,g)=>`<button class="btn sm" style="border-color:var(--amber);color:var(--amber)" onclick="bulkNhom(${g})">→ N${g+1}</button>`).join(''):''}`:'';
   // thống kê
-  const c={co:0,ok:0,warn:0,thieu:0,p:0,vang:0,tc:0,adj:0,xn:0};
+  const c={co:0,ok:0,warn:0,thieu:0,p:0,vang:0,tc:0,adj:0,xn:0}; const catOf=d=>d.isP?'p':d.nghiCa?'nghiCa':(d.vang&&!d.dieuChinh)?'vang':d.thieuRa?(live?'dangLam':'thieu'):d.dieuChinh?'xn':d.warn?'warn':'ok'; /* V1.4.0 */
   const live=isLive(line,date); c.dangLam=0;
   for(const r of rows){ const d=r.days[date]; if(d.isP){c.p++;continue;} if(d.nghiCa){c.nghiCa=(c.nghiCa||0)+1;continue;} if(d.vang&&!d.dieuChinh){c.vang++;continue;} c.co++; if(d.thieuRa){ if(live) c.dangLam++; else c.thieu++; } else if(d.dieuChinh){c.xn++;} else if(d.warn){c.warn++;} else c.ok++; if(d.tcRieng) c.tc++; }
   const allOn=rows.length&&rows.every(r=>cSel.has(String(r.emp.employeeNo)));
-  $('#cStat').innerHTML=`<label class="chk"><input type="checkbox" ${allOn?'checked':''} onchange="selAllCham(this.checked)"> Tất cả</label><i class="sep">·</i><span>Có mặt <b>${c.co}</b></span><i class="sep">·</i><span>Khớp <b>${c.ok}</b></span><i class="sep">·</i>${live?`<span style="color:var(--blue)">Đang làm <b>${c.dangLam}</b></span><i class="sep">·</i>`:''}<span style="color:var(--amber)"><span class="lg">Chưa xác nhận</span><span class="sh">Chưa XN</span> <b>${c.warn}</b></span><i class="sep">·</i><span style="color:var(--moss)"><span class="lg">Đã xác nhận</span><span class="sh">Đã XN</span> <b>${c.xn}</b></span><i class="sep">·</i><span style="color:var(--rust)"><span class="lg">Chờ xử lý</span><span class="sh">Chờ</span> <b>${c.thieu}</b></span><i class="sep">·</i><span>P <b>${c.p}</b></span>${c.nghiCa?`<i class="sep">·</i><span style="color:var(--muted)">Nghỉ ca <b>${c.nghiCa}</b></span>`:''}<i class="sep">·</i><span>Vắng <b>${c.vang}</b></span>${c.tc?`<i class="sep">·</i><span>TC riêng <b>${c.tc}</b></span>`:''}`;
+  if(CFILTER&&!['co','ok','dangLam','warn','xn','thieu','p','nghiCa','vang'].includes(CFILTER)) CFILTER=null;
+  const sb=(k,lb,n,col)=>`<button type="button" class="stb ${CFILTER===k?'on':''}" style="${col?'color:'+col:''}" onclick="setCFilter('${k}')">${lb} <b>${n}</b></button>`;
+  $('#cStat').innerHTML=`<label class="chk"><input type="checkbox" ${allOn?'checked':''} onchange="selAllCham(this.checked)"> Tất cả</label>${sb('co','Có mặt',c.co)}${sb('ok','Khớp',c.ok)}${live?sb('dangLam','Đang làm',c.dangLam,'var(--blue)'):''}${sb('warn','<span class="lg">Chưa xác nhận</span><span class="sh">Chưa XN</span>',c.warn,'var(--amber)')}${sb('xn','<span class="lg">Đã xác nhận</span><span class="sh">Đã XN</span>',c.xn,'var(--moss)')}${sb('thieu','<span class="lg">Chờ xử lý</span><span class="sh">Chờ</span>',c.thieu,'var(--rust)')}${sb('p','P',c.p)}${c.nghiCa?sb('nghiCa','Nghỉ ca',c.nghiCa,'var(--muted)'):''}${sb('vang','Vắng',c.vang)}${c.tc?`<span class="small">TC riêng <b>${c.tc}</b></span>`:''}${CFILTER?`<span class="small" style="flex-basis:100%">Đang lọc: <b>${CFILTER_LB[CFILTER]}</b> lên đầu · bấm lại số để bỏ lọc</span>`:''}`;
   // V1.3.5: danh sách theo đúng thứ tự tab Nhân viên (không gom theo trạng thái)
-  const order=d=>0;
+  const order=d=>CFILTER?(CFILTER==='co'?(['p','nghiCa','vang'].includes(catOf(d))?1:0):(catOf(d)===CFILTER?0:1)):0; /* V1.4.0: bấm số → nhóm đó lên đầu */
   const idx={}; deptEmps(dept).forEach((e,i)=>idx[String(e.employeeNo)]=i);
   const sorted=[...rows].sort((a,b)=>order(a.days[date])-order(b.days[date])||(idx[String(a.emp.employeeNo)]??9999)-(idx[String(b.emp.employeeNo)]??9999));
-  $('#cList').innerHTML=sorted.map((r,i)=>rowCham(r,date,line,i+1)).join('')||'<div class="small" style="padding:14px">Chưa có nhân viên trong tổ.</div>';
+  let nTop=CFILTER?sorted.filter(r=>order(r.days[date])===0).length:0;
+  $('#cList').innerHTML=sorted.map((r,i)=>(CFILTER&&i===nTop&&nTop>0?'<div class="csep"></div>':'')+rowCham(r,date,line,i+1)).join('')||'<div class="small" style="padding:14px">Chưa có nhân viên trong tổ.</div>';
   $('#cFoot').innerHTML=edit?`<button class="btn" onclick="showChamWarn()">Xem cảnh báo (${c.warn+c.thieu})</button><button class="btn p" onclick="closeDay()" ${closed||live?'disabled':''} title="${live?'Chưa hết giờ chuyền':''}">${closed?'Đã chốt ngày':live?'Chốt ngày (sau giờ ra chuyền)':'Chốt ngày '+date.slice(8,10)+'/'+date.slice(5,7)}</button>`:`<div class="note info" style="margin:0;flex:1">Ngày này đã chốt. Cần sửa thì báo kế toán.</div>`;
 }
 function rowCham(r,date,line,stt){

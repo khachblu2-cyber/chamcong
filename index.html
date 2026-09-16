@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.4.0
+ Phiên bản : V1.4.1
  Ngày      : 16/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,11 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.4.1 – (1) Báo cáo ngày xuất Excel đúng mẫu BC_NHÂN_SỰ (ExcelJS): TNR, gộp ô,
+            nền xanh ngọc/vàng, viền, dòng TỔNG có SUM; không cột P. (2) Ghi chú nhập
+            trực tiếp trên bảng, lưu lines/{tổ_ngày}.bcNote; doc chỉ có ghi chú không
+            tính là đã chốt. (3) Ghép ca: ngày đã chốt ghép trước; lượt vào = lượt gần
+            giờ TT nhất (bỏ lượt lẻ đứng trước); tổ ca 24h ngày Nghỉ ca bỏ lượt lẻ.
    V1.4.0 – (1) Thống kê Chấm công thành nút: bấm số → nhóm đó lên đầu danh sách
             (vạch ngăn), bấm lại bỏ lọc; đổi ngày/tổ tự bỏ lọc. (2) Điện thoại: khung
             nhóm N1/N2/N3 mỗi nhóm 1 dòng (nhãn cùng dòng, "mai" thay Ra hôm sau);
@@ -169,6 +174,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 :root{--ink:#1B2430;--blue:#2A5CAA;--paper:#F7F8FA;--line:#D9DEE5;--muted:#6B7280;--rust:#B4432B;--moss:#3B7A57;--blue-soft:#E4ECF8;--amber:#B7791F;--amber-soft:#FBF1DC;--rust-soft:#F8E3DE;--moss-soft:#E3EFE8}
 *{box-sizing:border-box}html,body{margin:0;background:var(--paper);font-family:"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);font-size:15px}
@@ -294,7 +300,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.0</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.1</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -549,6 +555,7 @@ function sessionInWindow(scans, L, used, R){
   let inW=scans.filter(s=>!used.has(s)&&s.ms>=a&&s.ms<=b).sort((x,y)=>x.ms-y.ms);
   if(!inW.length) return null;
   if(L.exact){ /* V1.3.8: chưa chốt — quét vào trong ngày, quét ra lấy tới tối đa maxCa giờ sau (qua đêm vẫn ghép đúng) */ const f=inW[0].ms, end=f+(R.maxCa||20)*3600000; inW=scans.filter(s=>!used.has(s)&&s.ms>=f&&s.ms<=end).sort((x,y)=>x.ms-y.ms); }
+  else if(L.nearIn&&L.nearIn.length){ /* V1.4.1: ngày đã chốt — lượt vào = lượt gần giờ tổ trưởng nhất (bỏ lượt lẻ đứng trước) */ const dist=s=>Math.min(...L.nearIn.map(t=>Math.abs(s.ms-t))); let best=inW[0]; for(const s of inW) if(dist(s)<dist(best)) best=s; inW.filter(s=>s.ms<best.ms).forEach(s=>used.add(s)); inW=inW.filter(s=>s.ms>=best.ms); }
   inW.forEach(s=>used.add(s));
   const first=inW[0], last=inW[inW.length-1];
   const c={inMs:first.ms,inMac:first.mac,scans:inW,date:null};
@@ -755,9 +762,12 @@ function computeDept(deptId, events, from, to){
   for(const no in byEmp){
     const b=byEmp[no]; const byDate={}; const used=new Set();
     if(tuCham){ // (A1) ngày đã chốt giờ: khung giờ tổ trưởng; ngày chưa chốt: khung giờ mặc định của tổ (Cấu hình)
-      for(let d=addDays(from,-1); d<=addDays(to,1); d=addDays(d,1)){ const l=lineOf(deptId,d); if(l&&l.xc) continue; let L; if(l){ const Ls=lineGroupsOf(deptId,l).map(v=>lineB(deptId,v,R)); L={inMs:Math.min(...Ls.map(x=>x.inMs)),outMs:Math.max(...Ls.map(x=>x.outMs))}; } else { L={inMs:vnMs(d,'00:00'),outMs:vnMs(d,'00:00')+86400000-1,exact:true}; } /* V1.3.7: chưa chốt → lượt quét đầu→cuối trong ngày */ const ses=sessionInWindow(b.scans,L,used,R); if(ses){ ses.date=d; byDate[d]=ses; } } }
+      /* V1.4.1: ghép ngày đã chốt trước (ưu tiên), ngày chưa chốt lấy lượt còn dư; ngày Nghỉ ca (ca 24h) bỏ lượt lẻ */
+      const dayList=[]; for(let d=addDays(from,-1); d<=addDays(to,1); d=addDays(d,1)) dayList.push(d);
+      for(const d of dayList){ const l=lineOf(deptId,d); if(!l||l.xc) continue; const Ls=lineGroupsOf(deptId,l).map(v=>lineB(deptId,v,R)); const L={inMs:Math.min(...Ls.map(x=>x.inMs)),outMs:Math.max(...Ls.map(x=>x.outMs)),nearIn:Ls.map(x=>x.inMs)}; const ses=sessionInWindow(b.scans,L,used,R); if(ses){ ses.date=d; byDate[d]=ses; } }
+      for(const d of dayList){ if(byDate[d]) continue; const l=lineOf(deptId,d); if(l) continue; if(R._ca24&&byDate[addDays(d,-1)]) continue; const L={inMs:vnMs(d,'00:00'),outMs:vnMs(d,'00:00')+86400000-1,exact:true}; const ses=sessionInWindow(b.scans,L,used,R); if(ses){ ses.date=d; byDate[d]=ses; } } }
     const ss=buildSessions(b.scans.filter(x=>!used.has(x)),R); // (A2) còn lại: ghép ca theo khoảng cách
-    for(const s of ss){ if(byDate[s.date]) continue; if(!byDate[s.date]||(s.outMs&&!byDate[s.date].outMs)) byDate[s.date]=s; }
+    for(const s of ss){ if(byDate[s.date]) continue; if(tuCham&&R._ca24&&byDate[addDays(s.date,-1)]) continue; /* V1.4.1: ngày Nghỉ ca bỏ lượt lẻ */ if(!byDate[s.date]||(s.outMs&&!byDate[s.date].outMs)) byDate[s.date]=s; }
     for(let d=from; d<=to; d=addDays(d,1)){
       const a=ADJ[no+'_'+d];
       if(tuCham){ const l0=lineOf(deptId,d); const g=pickGroup(deptId,l0,byDate[d]||null,a&&a.nhom!=null?Number(a.nhom):null); b.days[d]=fn(byDate[d]||null, lineVariant(l0,g), a||null, R); b.days[d].nhom=g; b.days[d].nhomForced=!!(a&&a.nhom!=null);
@@ -792,7 +802,9 @@ async function loadLines(deptId, from, to){
   for(const k in LINES) if(k.startsWith(deptId+'_')&&k.slice(deptId.length+1)>=from&&k.slice(deptId.length+1)<=to) delete LINES[k];
   q.forEach(x=>LINES[x.id]=x.data());
 }
-function lineOf(deptId,date){ return LINES[deptId+'_'+date]||null; }
+function lineOf(deptId,date){ const l=LINES[deptId+'_'+date]; return (l&&(l.inTime||l.xc))?l:null; } /* V1.4.1: doc chỉ có ghi chú/closed không tính là đã chốt */
+function bcNoteOf(deptId,date){ const l=LINES[deptId+'_'+date]; return (l&&l.bcNote)||''; }
+async function saveBCNote(deptId,date,val){ val=String(val||'').trim(); try{ await db.collection('lines').doc(deptId+'_'+date).set({deptId,date,bcNote:val,bcNoteBy:ME.name,bcNoteAt:TS.now()},{merge:true}); LINES[deptId+'_'+date]=Object.assign({},LINES[deptId+'_'+date]||{},{deptId,date,bcNote:val}); const r=BC&&BC.rows.find(x=>x.dept===deptId); if(r) r.note=val; toast('Đã lưu ghi chú'); }catch(e){ toast('Lưu ghi chú thất bại: '+errMsg(e),6000); } }
 function fillChamDeptSel(){ const ids=myDepts().filter(isTuCham); const sel=$('#cDeptSel'); const v=sel.value; sel.innerHTML=ids.map(id=>`<option value="${id}">${esc(DEPTS[id].ten)}</option>`).join('')||'<option value="">(chưa bật tổ nào)</option>'; if(v&&ids.includes(v)) sel.value=v; }
 function shiftChamDay(n){ $('#cDate').value=addDays($('#cDate').value,n); loadCham(); }
 let CHAM=null, CHAMCTX=null;
@@ -1184,7 +1196,7 @@ async function loadBC(force){
   const date=$('#bDate').value, depts=bcDepts(); if(!depts.length){ $('#bcTbl').innerHTML='<div class="note">Chưa có bộ phận.</div>'; return; }
   $('#bcTbl').innerHTML='<div class="small" style="padding:14px">Đang tổng hợp '+depts.length+' bộ phận…</div>';
   const nos=[]; depts.forEach(d=>deptEmps(d).forEach(e=>nos.push(String(e.employeeNo))));
-  await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,date,date), ...depts.filter(isTuCham).map(d=>loadLines(d,date,date))]);
+  await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,date,date), ...depts.map(d=>loadLines(d,date,date))]); /* V1.4.1: tải lines mọi tổ để lấy ghi chú */
   const ev=EVCACHE[[...nos].sort().join(',')+'|'+date+'|'+date]||[]; const since=vnMs(addDays(date,-7),'00:00');
   BC={date,rows:[]};
   for(const d of depts){ const r=computeDept(d,ev,date,date); const emps=Object.values(r); const tu=isTuCham(d); const line=tu?lineOf(d,date):null;
@@ -1193,34 +1205,36 @@ async function loadBC(force){
     let tt=null, ttTxt=''; if(!tu) tt=quet; else if(!line) ttTxt='chưa chốt'; else if(line.xc){ tt=0; ttTxt='XC'; } else tt=emps.filter(present).length;
     const khong=tt==null?null:Math.max(0,tt-quet); const moi=emps.filter(x=>x.emp.firstSeen&&x.emp.firstSeen.toMillis&&x.emp.firstSeen.toMillis()>=since).length;
     const comat=emps.filter(x=>x.days[date].mode==='comat').length; const p=emps.filter(x=>x.days[date].isP).length; const nghiCa=emps.filter(x=>x.days[date].nghiCa).length;
-    const notes=[]; if(moi) notes.push(moi+' người mới'); if(tu&&!line) notes.push('Tổ trưởng chưa chốt giờ'); if(tu&&line&&line.xc) notes.push('XC cả tổ'); if(!quet&&emps.length&&!(line&&line.xc)) notes.push('Chưa có dữ liệu quét'); if(comat) notes.push(comat+' "có mặt, máy không nhận"'); if(p) notes.push(p+' P');
-    BC.rows.push({dept:d,ten:DEPTS[d].ten,tong:emps.length,tt,ttTxt,quet,khong,p:p+nghiCa,notes:notes.join(' · '),khongList:emps.filter(x=>present(x)&&!x.days[date].in).map(x=>x.emp),vangList:emps.filter(x=>!present(x)&&!x.days[date].isP&&!x.days[date].nghiCa).map(x=>x.emp)}); }
+    const notes=[]; if(moi) notes.push(moi+' người mới'); if(tu&&!line) notes.push('Tổ trưởng chưa chốt giờ'); if(tu&&line&&line.xc) notes.push('XC cả tổ'); if(!quet&&emps.length&&!(line&&line.xc)) notes.push('Chưa có dữ liệu quét'); if(comat) notes.push(comat+' "có mặt, máy không nhận"');
+    BC.rows.push({dept:d,ten:DEPTS[d].ten,tong:emps.length,tt,ttTxt,quet,khong,p:p+nghiCa,note:bcNoteOf(d,date),notes:notes.join(' · '),khongList:emps.filter(x=>present(x)&&!x.days[date].in).map(x=>x.emp),vangList:emps.filter(x=>!present(x)&&!x.days[date].isP&&!x.days[date].nghiCa).map(x=>x.emp)}); }
   renderBC();
 }
 function renderBC(){ const {date,rows}=BC; const T={tong:0,tt:0,quet:0,khong:0};
   let h=`<div id="bcSnap" style="background:#fff;padding:4px 8px"><h2>BÁO CÁO NHÂN SỰ NGÀY ${date.slice(8,10)}/${date.slice(5,7)}/${date.slice(0,4)}</h2><table><tr><th rowspan="2">STT</th><th rowspan="2" class="l">BỘ PHẬN</th><th rowspan="2">Tổng số CN</th><th colspan="3">Tổng số người làm</th><th rowspan="2">P / nghỉ ca</th><th rowspan="2" class="l">Ghi chú</th></tr><tr><th>Tổ trưởng báo</th><th>Quét khuôn mặt</th><th>Không quét</th></tr>`;
   rows.forEach((r,i)=>{ T.tong+=r.tong; T.tt+=r.tt||0; T.quet+=r.quet; T.khong+=r.khong||0; T.p=(T.p||0)+(r.p||0);
-    h+=`<tr class="clk" style="cursor:pointer" onclick="bcDetail(${i})"><td>${i+1}</td><td class="l">${esc(r.ten)}</td><td class="r">${r.tong}</td><td class="${r.tt==null?'warn':''}">${r.tt==null?esc(r.ttTxt):r.tt}</td><td class="${!r.quet&&r.tong&&r.ttTxt!=='XC'?'warn':''}">${r.quet||(r.ttTxt==='XC'?'0':r.quet)}</td><td class="r">${r.khong==null?'–':r.khong}</td><td class="r">${r.p||0}</td><td class="note">${esc(r.notes)}</td></tr>`; });
+    h+=`<tr class="clk" style="cursor:pointer" onclick="bcDetail(${i})"><td>${i+1}</td><td class="l">${esc(r.ten)}</td><td class="r">${r.tong}</td><td class="${r.tt==null?'warn':''}">${r.tt==null?esc(r.ttTxt):r.tt}</td><td class="${!r.quet&&r.tong&&r.ttTxt!=='XC'?'warn':''}">${r.quet||(r.ttTxt==='XC'?'0':r.quet)}</td><td class="r">${r.khong==null?'–':r.khong}</td><td class="r">${r.p||0}</td><td class="note" onclick="event.stopPropagation()"><input class="chip" style="width:100%;min-width:160px;font-size:13px" value="${esc(r.note||'')}" placeholder="ghi chú…" onchange="saveBCNote('${esc(r.dept)}','${date}',this.value)">${r.notes?`<div class="small">${esc(r.notes)}</div>`:''}</td></tr>`; });
   h+=`<tr><td class="tot y" colspan="2">TỔNG</td><td class="tot y">${T.tong}</td><td class="tot y">${T.tt}</td><td class="tot y">${T.quet}</td><td class="tot y r">${T.khong}</td><td class="tot y r">${T.p||0}</td><td class="tot"></td></tr></table></div>`;
   $('#bcTbl').innerHTML=h; }
 function bcDetail(i){ const r=BC.rows[i]; const li=l=>l.length?l.map((e,k)=>`${k+1}. ${esc(e.name)}`).join('<br>'):'<span class="small">— không có —</span>';
   openModal(`<h3>${esc(r.ten)} · ${fmtDateVN(BC.date)}</h3><div class="sub">Tổng ${r.tong} · tổ trưởng báo ${r.tt==null?r.ttTxt:r.tt} · quét ${r.quet}</div><div class="fld"><label>Không quét (tổ trưởng báo có mặt nhưng máy không có) · ${r.khongList.length}</label><div class="names">${li(r.khongList)}</div></div><div class="fld"><label>Vắng (không quét, không có xác nhận) · ${r.vangList.length}</label><div class="names">${li(r.vangList)}</div></div><div class="btnrow"><button class="btn" onclick="closeModal()">Đóng</button></div>`); }
-function exportBC(){ if(!BC) return; const {date,rows}=BC; const T={tong:0,tt:0,quet:0,khong:0,p:0}; const data=rows.map((r,i)=>{ T.tong+=r.tong;T.tt+=r.tt||0;T.quet+=r.quet;T.khong+=r.khong||0;T.p+=r.p||0; return [i+1,r.ten,r.tong,r.tt==null?r.ttTxt:r.tt,r.quet,r.khong==null?'':r.khong,r.p||0,r.notes]; });
-  const ws=XLSX.utils.aoa_to_sheet([[`BÁO CÁO NHÂN SỰ NGÀY ${date.slice(8,10)}/${date.slice(5,7)}/${date.slice(0,4)}`],[],['STT','BỘ PHẬN','Tổng số CN','Tổ trưởng báo','Quét khuôn mặt','Không quét','P / nghỉ ca','Ghi chú'],...data,['','TỔNG',T.tong,T.tt,T.quet,T.khong,T.p,'']]);
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Báo cáo'); XLSX.writeFile(wb,`Bao-cao-nhan-su-${date}.xlsx`); }
-async function snapBC(){ if(!BC||typeof html2canvas==='undefined'){ toast('Chưa tải được thư viện chụp ảnh, thử lại.'); return; } const el=$('#bcSnap'); const cv=await html2canvas(el,{scale:2,backgroundColor:'#fff'}); const a=document.createElement('a'); a.download=`Bao-cao-nhan-su-${BC.date}.png`; a.href=cv.toDataURL('image/png'); a.click(); toast('Đã tải ảnh, gửi Zalo được ngay'); }
-
-/* ===================== LƯƠNG ===================== */
-let PAY=null, PAYEDIT={};
-async function loadPay(){ syncFrom($('#pDept')&&$('#pDept').value,$('#pMonth')&&$('#pMonth').value);
-  const dept=$('#pDept').value, ym=$('#pMonth').value; if(!dept||!ym) return;
-  const kieu=(DEPTS[dept].kieu)||'gio_he'; $('#pKieu').textContent=KIEU[kieu];
-  if(kieu!=='gio_he'&&kieu!=='thang_tc_gio'){ $('#pTbl').innerHTML=`<div class="note">Bộ phận này dùng kiểu "${KIEU[kieu]}" — bản V1 chưa tính. Đổi kiểu trong Cấu hình hoặc chờ bản sau.</div>`; return; }
-  $('#pTbl').innerHTML='<div class="small" style="padding:14px">Đang tính…</div>';
-  const from=ym+'-01', to=ym+'-'+pad(monthDays(ym)); const emps=deptEmps(dept); const nos=emps.map(e=>String(e.employeeNo));
-  const [ev,pq]=await Promise.all([loadEvents(nos,from,to), loadAdj(nos,from,to), db.collection('payroll').where('ym','==',ym).get(), isTuCham(dept)?loadLines(dept,from,to):null]).then(r=>[r[0],r[2]]);
-  const pmap={}; pq.forEach(x=>pmap[x.data().employeeNo]=x.data());
-  PAY={dept,ym,rows:computeDept(dept,ev,from,to),pmap}; PAYEDIT={}; $('#pSave').disabled=true; renderPay();
+function exportBC(){ if(!BC) return; const {date,rows}=BC; const dd=date.slice(8,10)+'/'+date.slice(5,7)+'/'+date.slice(0,4);
+  if(typeof ExcelJS==='undefined'){ toast('Chưa tải được thư viện Excel (ExcelJS). Kiểm tra mạng rồi thử lại.',6000); return; }
+  /* V1.4.1: xuất đúng mẫu BC_NHÂN_SỰ.xlsx (Times New Roman, gộp ô, nền xanh ngọc/vàng, viền mảnh, dòng TỔNG có SUM) */
+  const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Sheet1');
+  const F=(sz,b,color)=>({name:'Times New Roman',size:sz,bold:!!b,color:color?{argb:color}:undefined});
+  const fillC={type:'pattern',pattern:'solid',fgColor:{argb:'FF66FFFF'}}, fillY={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFF00'}};
+  const thin={style:'thin'}; const box={top:thin,left:thin,bottom:thin,right:thin}; const C={horizontal:'center',vertical:'middle',wrapText:true}, Lf={horizontal:'left',vertical:'middle',wrapText:true};
+  ws.columns=[{width:8},{width:32.9},{width:16.4},{width:17.9},{width:16},{width:18},{width:30}];
+  ws.mergeCells('A1:G2'); ws.getCell('A1').value='BÁO CÁO NHÂN SỰ NGÀY '+dd; ws.getCell('A1').font=F(24,true); ws.getCell('A1').alignment=C; ws.getRow(2).height=32.25;
+  ws.mergeCells('D3:G3'); ws.getCell('D3').value='Tổng số người làm'; ws.getRow(3).height=29.25;
+  const H=['Stt','Bộ Phận','Tổng số CN','Tổ trưởng báo','Quét bằng khuôn mặt','Số người Không quét khuôn mặt','Ghi Chú']; H.forEach((v,i)=>ws.getRow(4).getCell(i+1).value=v); ws.getRow(4).height=37.5;
+  for(const r of [3,4]) for(let c=1;c<=7;c++){ const cell=ws.getRow(r).getCell(c); cell.font=F(c<=2&&r===4?15:13,true); cell.fill=fillC; cell.alignment=C; cell.border=box; }
+  const first=5; rows.forEach((r,i)=>{ const row=ws.getRow(first+i); row.height=19.5; const vals=[String(i+1),r.ten,r.tong,r.tt==null?r.ttTxt:r.tt,r.quet,r.khong==null?'':r.khong,[r.note||'',r.notes||''].filter(Boolean).join(' · ')]; vals.forEach((v,i)=>row.getCell(i+1).value=v); for(let c=1;c<=7;c++){ const cell=row.getCell(c); cell.font=F(c===2?15:13,false); cell.alignment=(c===2||c===7)?Lf:C; cell.border=box; } });
+  const last=first+rows.length-1, tr=first+rows.length; const row=ws.getRow(tr); row.height=19.5; ws.mergeCells(`A${tr}:B${tr}`); row.getCell(1).value='TỔNG';
+  ['C','D','E','F'].forEach(col=>{ row.getCell(col).value=rows.length?{formula:`SUM(${col}${first}:${col}${last})`}:0; });
+  for(let c=1;c<=7;c++){ const cell=row.getCell(c); cell.font=F(c<=2?15:13,true); cell.alignment=C; cell.border=box; if(c<=2) cell.fill=fillY; }
+  ws.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9}; ws.pageSetup.margins={left:0.5,right:0.5,top:0.6,bottom:0.6,header:0.3,footer:0.3};
+  wb.xlsx.writeBuffer().then(buf=>{ const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`BC_NHAN_SU_${date.slice(8,10)}-${date.slice(5,7)}-${date.slice(0,4)}.xlsx`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }).catch(e=>toast('Xuất Excel lỗi: '+(e&&e.message||e),6000));
 }
 function renderPay(){
   const {dept,ym,rows,pmap}=PAY; const R=rulesOf(dept); const list=empRows(rows,dept); if(isDiem(dept)) return renderPayDiem();

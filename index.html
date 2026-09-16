@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.3.8
+ Phiên bản : V1.3.9
  Ngày      : 16/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,11 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.3.9 – (1) Tổ đang chọn dùng chung Chấm công · Tháng · Lương · Cấu hình ·
+            Nhân viên; Hôm nay mở tab chỉ tải tổ đang chọn (Tất cả/Cty chỉ dùng
+            trong lần đó). (2) Tổ kiểu khung giờ TT: tóm tắt khung ghi đúng cơm theo
+            mốc, bỏ chữ ca chuẩn/tăng ca, ẩn ô TC riêng, công thức tab Lương đúng kiểu.
+            (3) Điểm trừ theo giờ thiếu làm tròn 0,5 (hết số lẻ 8,2 điểm).
    V1.3.8 – (1) Ngày chưa chốt: quét vào trong ngày, quét ra lấy tới tối đa
             "Một ca tối đa" giờ sau (qua đêm 07:00→03:00 ghép đúng, ngày sau không
             lấy nhầm). (2) Người P không đếm vào N1/N2, Quét mặt, TT báo; Báo cáo
@@ -283,7 +288,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.3.8</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.3.9</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -573,11 +578,11 @@ function computeDayDiem(session, line, adj, rules){
   if(d.mode==='xcRieng'){ d.xc=true; d.cong=1; d.diem=du; if(session) d.warn='xcLam'; return d; }
   if(!line){ if(session&&session.outMs){ const v={date:vnDate(session.inMs),inTime:R.caVao||'05:00',outTime:R.caHet||'16:00'}; const Lv=lineBoundsDiem(v,R); const a=Math.max(session.inMs,Lv.inMs), bStd=Math.min(session.outMs,Lv.hetMs); d.mh=Math.min(du,floorHalf(Math.max(0,(bStd-a)/3600000))); d.mtc=tcDiemOf(a,session.outMs,Lv); } else if(session) d.thieuRa=true; else d.vang=true; return d; }
   const L=lineBoundsDiem(line,R); d.lineH=L.hours; d.line=L; d.tcLine=L.tcLine;
-  const calc=(inMs,outMs)=>{ const a=Math.max(inMs,L.inMs); const bStd=Math.min(outMs,L.hetMs); const khop=(a-L.inMs)<=0.5*3600000+1&&(L.hetMs-bStd)<=0.5*3600000+1; /* vào/ra trong 0,5h so giờ TT = đủ điểm, dù khung TT ngắn hơn ca chuẩn */ const gioMay=floorHalf(Math.max(0,(bStd-a)/3600000)); const diem=khop?du:(L.khongBu?Math.max(0,r1(du-(L.hours-gioMay))):gioMay); /* V1.3.6: TC không bù → điểm = đủ điểm trừ số giờ thiếu trong khung TT (trễ 1h = −1 điểm) */ const tc=L.tcLine>0?tcDiemOf(a,Math.min(outMs,L.outMs),L):0; return {diem:Math.min(diem,du),tc}; };
+  const calc=(inMs,outMs)=>{ const a=Math.max(inMs,L.inMs); const bStd=Math.min(outMs,L.hetMs); const khop=(a-L.inMs)<=0.5*3600000+1&&(L.hetMs-bStd)<=0.5*3600000+1; /* vào/ra trong 0,5h so giờ TT = đủ điểm, dù khung TT ngắn hơn ca chuẩn */ const gioMay=floorHalf(Math.max(0,(bStd-a)/3600000)); const diem=khop?du:(L.khongBu?Math.max(0,r1(du-floorHalf(Math.max(0,L.hours-gioMay)+1e-9))):gioMay); /* V1.3.9: giờ thiếu làm tròn 0,5 → điểm chẵn 0,5 */ /* V1.3.6: TC không bù → điểm = đủ điểm trừ số giờ thiếu trong khung TT (trễ 1h = −1 điểm) */ const tc=L.tcLine>0?tcDiemOf(a,Math.min(outMs,L.outMs),L):0; return {diem:Math.min(diem,du),tc}; };
   if(session&&session.outMs){ const m=calc(session.inMs,session.outMs); d.mh=m.diem; d.mtc=m.tc; d.tre=r1(Math.max(0,session.inMs-L.inMs)/3600000); d.som=r1(Math.max(0,L.outMs-session.outMs)/3600000); }
   else if(session){ d.thieuRa=true; d.tre=r1(Math.max(0,session.inMs-L.inMs)/3600000); } else d.vang=true;
   if(line.xc&&d.mode==='chuyen'){ d.xc=true; d.cong=1; d.diem=du; if(session) d.warn='xcLam'; return d; }
-  let diem=null, tc=0, effIn=session?Math.max(session.inMs,L.inMs):L.inMs, effOut=session&&session.outMs?Math.min(session.outMs,L.outMs):null;
+  let diem=null, tc=0, effIn=session?Math.max(session.inMs,L.inMs):L.inMs, effOut=session&&session.outMs?session.outMs:null; /* cơm mốc theo giờ ra thật */
   switch(d.mode){
     case 'chuyen':
       if(d.vang||d.thieuRa) return d;
@@ -676,7 +681,8 @@ const SYNC={dept:'',ym:''}; // V1.3.4: bộ phận + tháng đang xem, dùng chu
 function syncFrom(dept,ym){ if(dept) SYNC.dept=dept; if(ym) SYNC.ym=ym; }
 function syncTo(selId,monthId){ const s=$('#'+selId); if(s&&SYNC.dept&&s.querySelector(`option[value="${SYNC.dept}"]`)) s.value=SYNC.dept; const m=monthId?$('#'+monthId):null; if(m&&SYNC.ym&&!(ME.role==='totruong'&&monthId==='mMonth')) m.value=SYNC.ym; }
 function showTab(t){ saveBaseCache(); $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t)); ['today','cham','month','bc','pay','emp','cfg'].forEach(x=>$('#tab-'+x).classList.toggle('hide',x!==t));
-  if(t==='cham') syncTo('cDeptSel'); if(t==='month') syncTo('mDept','mMonth'); if(t==='pay') syncTo('pDept','pMonth');
+  if(t==='cham') syncTo('cDeptSel'); if(t==='month') syncTo('mDept','mMonth'); if(t==='pay') syncTo('pDept','pMonth'); if(t==='cfg') syncTo('cDept'); if(t==='emp'){ syncTo('eDept'); if(ORD) ORD=null; }
+  if(t==='today'&&SYNC.dept&&myDepts().includes(SYNC.dept)){ dSel=new Set([SYNC.dept]); renderDeptPop(); } /* V1.3.9: Hôm nay chỉ tải tổ đang chọn */
   if(t==='cham') loadCham(); if(t==='bc') loadBC(); if(t==='month') loadMonth(); if(t==='pay') loadPay(); if(t==='emp') renderEmp(); if(t==='cfg') renderCfg(); }
 
 /* ===================== DỮ LIỆU NỀN ===================== */
@@ -798,11 +804,12 @@ function renderCham(){
   const {dept,date}=CHAMCTX; const R=rulesOf(dept); const line=lineOf(dept,date); const rows=Object.values(CHAM); const closed=!!(line&&line.closed);
   // khung giờ tổ trưởng
   const dm=isDiem(dept); const cd=!line&&isCoDinh(dept); const li=line?line.inTime:(cd?(R.caVao||'05:00'):''), lo=line?(line.outTime||(dm?(R.caHet||'16:00'):'')):(cd?(R.caHet||'16:00'):''); /* V1.3.4: chưa chốt → ô trống --:--; V1.3.7: giờ cố định → điền sẵn ca chuẩn, vẫn phải Chốt giờ */ const xc=!!(line&&line.xc); const nd=line?!!line.outNextDay:false;
-  let sum=''; if(line){ if(xc) sum='XC cả tổ · mỗi người 1 công, không giờ, không cơm'; else if(dm){ const L=lineBoundsDiem(line,R); sum=`${line.inTime} → ${vnTime(L.hetMs)} = ${R.diemDu||10} điểm (1 công)${L.veSom?` · về sớm ${fmtH(L.veSom)}h so ca chuẩn ${R.caHet||'16:00'}`:''}${L.tcLine?` · TC ${R.caHet||'16:00'} → ${line.outTime} = ${fmtH(L.tcLine)}h ${L.khongBu?'':' (đủ '+fmtH(L.gioCaChuan)+'h mới tính)'}`:' · không TC'} · cơm ${finishDiem({},R.diemDu||10,L.tcLine,R).com}`; } else { const L=lineBounds(line); const t=finishDay({},L.hours,R); const od=vnDate(L.outMs); sum=`${line.inTime} → ${line.outTime}${od!==date?' ('+od.slice(8,10)+'/'+od.slice(5,7)+')':''} = ${fmtH(L.hours)}h · ${fmtH(t.gioLam)} giờ làm + TC ${fmtH(t.tc)} · cơm ${t.com}`; } }
+  let sum=''; if(line){ if(xc) sum='XC cả tổ · mỗi người 1 công, không giờ, không cơm'; else if(dm&&R._khungTT){ const L=lineBoundsDiem(line,R); const du=R.diemDu||10; sum=`${line.inTime} → ${line.outTime}${line.outNextDay?' hôm sau':''} = ${du} điểm (${du>=20?'XX = 2 công':'1 công'}) · không TC · cơm ${comTheoMoc(line.date,L.inMs,L.outMs,R)}`; }
+  else if(dm){ const L=lineBoundsDiem(line,R); sum=`${line.inTime} → ${vnTime(L.hetMs)} = ${R.diemDu||10} điểm (1 công)${L.veSom?` · về sớm ${fmtH(L.veSom)}h so ca chuẩn ${R.caHet||'16:00'}`:''}${L.tcLine?` · TC ${R.caHet||'16:00'} → ${line.outTime} = ${fmtH(L.tcLine)}h ${L.khongBu?'':' (đủ '+fmtH(L.gioCaChuan)+'h mới tính)'}`:' · không TC'} · cơm ${finishDiem({},R.diemDu||10,L.tcLine,R).com}`; } else { const L=lineBounds(line); const t=finishDay({},L.hours,R); const od=vnDate(L.outMs); sum=`${line.inTime} → ${line.outTime}${od!==date?' ('+od.slice(8,10)+'/'+od.slice(5,7)+')':''} = ${fmtH(L.hours)}h · ${fmtH(t.gioLam)} giờ làm + TC ${fmtH(t.tc)} · cơm ${t.com}`; } }
   if(line&&!xc&&soNhom(dept)>1){ const parts=[]; for(let g=0;g<soNhom(dept);g++){ const v=lineVariant(line,g); if(!v||!v.inTime) continue; const cnt=rows.filter(r=>r.days[date].nhom===g&&r.days[date].in&&!r.days[date].isP).length; parts.push(`N${g+1} ${v.inTime}→${v.outTime}${dm?'':' = '+fmtH(lineBounds(v).hours)+'h'} · ${cnt} người`); } sum=parts.join(' · '); }
   const edit=canEditCham(dept,date);
   $('#cLine').innerHTML=`<div class="line ${xc?'xc':''} ${closed?'closed':''}"><h4>GIỜ TỔ TRƯỞNG ${fmtDateVN(date).toUpperCase()}${closed?' · ĐÃ CHỐT NGÀY':line?(xc?' · XC CẢ TỔ':' · đã chốt giờ'):' · <span style="color:var(--rust)">CHƯA CHỐT GIỜ</span>'}</h4>
-   <div class="f">${soNhom(dept)>1?'<span class="tag n1">N1</span>':''}<span>Vào</span><input type="time" id="lIn" value="${li}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut" value="${lo}" ${!edit?'disabled':''}>${dm?`<span class="small">ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'} = ${R.diemDu||10} điểm · ra sau ${R.caHet||'16:00'} là tăng ca</span>`:''}<label class="chk"><input type="checkbox" id="lNext" ${nd?'checked':''} ${!edit?'disabled':''}> Ra hôm sau</label></div>
+   <div class="f">${soNhom(dept)>1?'<span class="tag n1">N1</span>':''}<span>Vào</span><input type="time" id="lIn" value="${li}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut" value="${lo}" ${!edit?'disabled':''}>${dm?`<span class="small">${R._khungTT?`khung giờ tổ trưởng = ${R.diemDu||10} điểm · không TC · cơm qua mốc ${['comMoc1','comMoc2','comMoc3'].map(k=>R[k]).filter(Boolean).join(', ')||'(chưa đặt)'}`:`ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'} = ${R.diemDu||10} điểm · ra sau ${R.caHet||'16:00'} là tăng ca`}</span>`:''}<label class="chk"><input type="checkbox" id="lNext" ${nd?'checked':''} ${!edit?'disabled':''}> Ra hôm sau</label></div>
    ${Array.from({length:soNhom(dept)-1},(_,k)=>{ const g=k+2; const G=(line&&line.groups&&line.groups[k])||{}; return `<div class="f" style="margin-top:6px"><span class="tag n${g}">N${g}</span><span>Vào</span><input type="time" id="lIn${g}" value="${line?(G.inTime||''):(cd?(R['nhomVao'+g]||''):'')}" ${!edit?'disabled':''}><span>Ra</span><input type="time" id="lOut${g}" value="${line?(G.outTime||''):(cd?(R['nhomRa'+g]||''):'')}" ${!edit?'disabled':''}><label class="chk"><input type="checkbox" id="lNext${g}" ${G.outNextDay?'checked':''} ${!edit?'disabled':''}> Ra hôm sau</label></div>`; }).join('')}
    <div class="sm2"><span>${sum||(cd?`Chưa chốt · giờ đã điền sẵn theo ca chuẩn, kiểm tra rồi bấm Chốt giờ (sửa nếu ngày này khác)`:dm?`Chưa chốt · nhập giờ Vào và giờ Ra tổ trưởng rồi bấm Chốt giờ (máy đang tạm tính theo ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'})`:`Chưa chốt · nhập giờ Vào/Ra rồi bấm Chốt giờ (máy đang tạm tính theo lượt quét đầu → cuối trong ngày)`)}</span><span>${line&&line.by?`<span class="small">${esc(line.by)} · ${line.at?new Date(line.at.toMillis()).toLocaleString('vi-VN'):''}</span> `:''}<button class="btn sm p" onclick="saveLine()" ${!edit?'disabled':''}>${line?'Cập nhật giờ':'Chốt giờ'}</button></span></div></div>`;
   // thanh công cụ theo tick
@@ -933,7 +940,7 @@ function openCham(no,date){
    ${modes.map(([k,lb,v])=>`<div class="opt ${cur===k?'on':''}" onclick="selMode('${k}')"><input type="radio" name="cm" value="${k}" ${cur===k?'checked':''}> ${lb}<b>${v}</b></div>`).join('')}
    <div class="two" id="tayBox" style="${cur==='tay'?'':'display:none'}"><div class="fld"><label>Giờ vào (nhập tay)</label><input type="time" id="tIn" value="${a.inTime||line.inTime}" oninput="chamPreview()"></div><div class="fld"><label>Giờ ra</label><input type="time" id="tOut" value="${a.outTime||line.outTime}" oninput="chamPreview()"></div></div>
    <label class="chk" id="tNextBox" style="${cur==='tay'?'':'display:none'}"><input type="checkbox" id="tNext" ${a.outNextDay?'checked':''} onchange="chamPreview()"> Giờ ra thuộc hôm sau</label>
-   <div class="two"><div class="fld"><label>TC riêng: ra thật lúc (sau ${dm?(R.caHet||'16:00')+', đủ '+fmtH(L.gioCaChuan||11)+'h mới tính':line.outTime})</label><input type="time" id="tTC" value="${a.outTC||''}" oninput="chamPreview()"></div><div class="fld"><label>Giờ tính được</label><div class="ro" id="cPrev"></div></div></div>
+   <div class="two"><div class="fld ${R._khungTT?'hide':''}"><label>TC riêng: ra thật lúc (sau ${dm?(R.caHet||'16:00')+(R._khongBu?'':', đủ '+fmtH(L.gioCaChuan||11)+'h mới tính'):line.outTime})</label><input type="time" id="tTC" value="${a.outTC||''}" oninput="chamPreview()"></div><div class="fld"><label>Giờ tính được</label><div class="ro" id="cPrev"></div></div></div>
    <label class="chk"><input type="checkbox" id="tTCNext" ${a.outTCNext?'checked':''} onchange="chamPreview()"> TC ra vào hôm sau</label>
    <div class="fld"><label>Lý do (tự điền theo lựa chọn)</label><div class="ro" id="cReasonShow"></div></div>
    <div class="fld"><label>Ghi chú thêm (không bắt buộc)</label><input id="cNote" value="${esc(a.note||'')}" placeholder="vd: máy 4 không nhận mặt buổi sáng"></div>
@@ -965,7 +972,7 @@ let dSel=new Set(JSON.parse(localStorage.getItem('cc_dSel')||'[]'));
 function selDepts(){ const all=myDepts(); const v=all.filter(id=>dSel.has(id)); return v.length?v:(all.length?[all[0]]:[]); }
 /* V1.3.5: nút chọn nhanh Tất cả / theo công ty (lấy từ ô Công ty của bộ phận trong Cấu hình) */
 function ctyBtns(all,fn){ const m={}; all.forEach(id=>{ const c=(DEPTS[id].congTy||'').trim(); if(c) (m[c]=m[c]||[]).push(id); }); const b=[`<button class="btn sm" onclick="${fn}('')">Tất cả</button>`].concat(Object.keys(m).sort().map(c=>`<button class="btn sm" onclick="${fn}('${esc(c).replace(/'/g,'&#39;')}')">Cty ${esc(c)} (${m[c].length})</button>`)); return `<div class="ft" style="flex-wrap:wrap;border-bottom:1px solid var(--line);border-top:0">${b.join('')}</div>`; }
-function quickDept(c){ const all=myDepts(); dSel=new Set(c?all.filter(id=>(DEPTS[id].congTy||'').trim()===c):all); localStorage.setItem('cc_dSel',JSON.stringify([...dSel])); $('#dPop').classList.add('hide'); renderDeptPop(); loadToday(); }
+function quickDept(c){ const all=myDepts(); dSel=new Set(c?all.filter(id=>(DEPTS[id].congTy||'').trim()===c):all); $('#dPop').classList.add('hide'); renderDeptPop(); loadToday(); }
 function quickBC(c){ const all=myDepts(); bSel=new Set(c?all.filter(id=>(DEPTS[id].congTy||'').trim()===c):all); localStorage.setItem('cc_bSel',JSON.stringify([...bSel])); $('#bPop').classList.add('hide'); renderBCPop(); loadBC(); }
 function renderDeptPop(){
   const all=myDepts(); const cur=selDepts(); const cnt=id=>deptEmps(id).length;
@@ -979,7 +986,7 @@ function toggleDeptPop(){ $('#dPop').classList.toggle('hide'); }
 function applyDeptPop(){ dSel=new Set($$('#dPop .dk:checked').map(c=>c.value)); localStorage.setItem('cc_dSel',JSON.stringify([...dSel])); $('#dPop').classList.add('hide'); renderDeptPop(); loadToday(); }
 document.addEventListener('click',e=>{ if(!e.target.closest('#dPop')&&!e.target.closest('#dDeptBtn')) $('#dPop').classList.add('hide'); if(!e.target.closest('#bPop')&&!e.target.closest('#bDeptBtn')) $('#bPop').classList.add('hide'); });
 function shiftDay(n){ $('#dDate').value=addDays($('#dDate').value,n); loadToday(); }
-async function loadToday(force){
+async function loadToday(force){ if(dSel.size===1) syncFrom([...dSel][0],'');
   const depts=selDepts(), date=$('#dDate').value;
   if(!depts.length){ $('#dList').innerHTML='<div class="note">Chưa có bộ phận. Vào Cấu hình tạo bộ phận và gán nhân viên.</div>'; return; }
   const nos=[]; depts.forEach(d=>deptEmps(d).forEach(e=>nos.push(String(e.employeeNo)))); $('#dCount').textContent=nos.length+' NV';
@@ -1227,7 +1234,7 @@ function renderPayDiem(){
   h+=`<tr><td class="tot"></td><td class="l stk tot">Tổng (${list.length} NV)</td><td class="tot"></td><td class="tot">${fmtH(T.diem)}</td><td class="tot">${fmtH(T.cong)}</td><td class="tot">${fmtH(T.tc)}</td><td class="tot">${T.com}</td><td class="num tot">${fmtN(T.tienGio)}</td><td class="num tot">${fmtN(T.tienTC)}</td><td class="num tot">${fmtN(T.tienCom)}</td><td class="num tot">${fmtN(T.cc)}</td><td class="num tot">${fmtN(T.bu)}</td><td class="num tot">${fmtN(T.tong)}</td><td class="num tot">${fmtN(T.bh)}</td><td class="num tot">${fmtN(T.thuc)}</td><td class="tot"></td></tr></table>`;
   $('#pTbl').innerHTML=h;
   const thieu=list.filter(r=>!r.month.luongThang).length;
-  $('#pNote').innerHTML=`<div class="note info">Công thức: điểm/ngày = giờ máy trong khung Vào–Ra tổ trưởng (ra ≥ giờ Ra TT −0,5h = đủ ${R.diemDu||10}), không trừ nghỉ · công = điểm ÷ ${R.diemDu||10} · tiền công = lương tháng ÷ 30 × công · TC = giờ sau ${R.caHet||'16:00'} nhưng phải làm đủ ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'} (vào trễ bù giờ trước) × ${fmtN(R.donGiaTC)} + cơm × ${fmtN(R.donGiaCom)} + chuyên cần + bù. Thực lĩnh = tổng làm tròn nghìn − bảo hiểm.${thieu?` <b style="color:var(--rust)">${thieu} người chưa nhập lương tháng (tab Nhân viên).</b>`:''}</div>`;
+  $('#pNote').innerHTML=`<div class="note info">Công thức: ${R._khungTT?`khung giờ tổ trưởng = đủ ${R.diemDu||10} điểm, vào trễ/về sớm trừ 1 điểm mỗi giờ thiếu · công = điểm ÷ 10 · tiền công = lương tháng ÷ 30 × công × hệ số · không tăng ca · cơm theo mốc giờ`:R._khongBu?`điểm = giờ máy trong khung Vào–Ra TT (khớp = đủ ${R.diemDu||10}, thiếu giờ trừ điểm) · công = điểm ÷ ${R.diemDu||10} · tiền công = lương tháng ÷ 30 × công · TC = toàn bộ giờ sau ${R.caHet||'16:00'} (không bù) × ${fmtN(R.donGiaTC)}`:`điểm/ngày = giờ máy trong khung Vào–Ra tổ trưởng (ra ≥ giờ Ra TT −0,5h = đủ ${R.diemDu||10}), không trừ nghỉ · công = điểm ÷ ${R.diemDu||10} · tiền công = lương tháng ÷ 30 × công · TC = giờ sau ${R.caHet||'16:00'} nhưng phải làm đủ ca chuẩn ${R.caVao||'05:00'}–${R.caHet||'16:00'} (vào trễ bù giờ trước) × ${fmtN(R.donGiaTC)}`} + cơm × ${fmtN(R.donGiaCom)} + chuyên cần + bù. Thực lĩnh = tổng làm tròn nghìn − bảo hiểm.${thieu?` <b style="color:var(--rust)">${thieu} người chưa nhập lương tháng (tab Nhân viên).</b>`:''}</div>`;
 }
 function payEdit(no,k,v){ PAYEDIT[no]=Object.assign(PAYEDIT[no]||{},{[k]:k==='ghiChu'?v:Number(String(v).replace(/[^\d.-]/g,''))||0}); $('#pSave').disabled=false; renderPay(); }
 async function savePayEdits(){ const {ym,pmap}=PAY; const b=db.batch(); let n=0;
@@ -1261,7 +1268,7 @@ function ordTouchMove(e){ if(!ORD_DRAG) return; e.preventDefault(); const t=e.to
 function ordAZ(){ ORD.sort((a,b)=>(EMPS[a].name||'').localeCompare(EMPS[b].name||'','vi')); renderEmp(); }
 async function ordSave(){ let b=db.batch(); ORD.forEach((no,i)=>{ b.set(db.collection('employees').doc(no),{thuTu:i+1,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); }); try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; } ORD.forEach((no,i)=>{ EMPS[no].thuTu=i+1; }); ORD=null; toast('Đã lưu thứ tự'); renderEmp(); }
 function renderEmp(){
-  const q=($('#eSearch').value||'').toLowerCase(), dept=$('#eDept').value, onlyNew=$('#eOnlyNew').checked;
+  const q=($('#eSearch').value||'').toLowerCase(), dept=$('#eDept').value, onlyNew=$('#eOnlyNew').checked; if(dept&&dept!=='__none') syncFrom(dept,'');
   $('#eOrdBtn').classList.toggle('hide',!dept||dept==='__none'); $('#eOrdBtn').textContent=ORD?'Thoát sắp thứ tự':'Sắp thứ tự';
   if(ORD){ $('#eNote').innerHTML=`<b>Sắp thứ tự tổ ${esc(DEPTS[dept].ten)}</b> — kéo thả dòng (☰) hoặc bấm ▲▼ rồi "Lưu thứ tự". Thứ tự dùng cho Chấm công, Tháng, Lương và Excel. <button class="btn sm" onclick="ordAZ()">Xếp theo tên A→Z</button> <button class="btn sm p" onclick="ordSave()">Lưu thứ tự</button>`;
     $('#eTbl').innerHTML='<table><tr><th>STT</th><th class="l">Họ tên</th><th>Chức vụ</th><th></th></tr>'+ORD.map((no,i)=>`<tr data-no="${esc(no)}" draggable="true" ondragstart="ordDragStart(event,'${esc(no)}')" ondragover="ordDragOver(event,'${esc(no)}')" ondragend="ordDragEnd()" ondrop="event.preventDefault();ordDragEnd()" ontouchstart="ordTouchStart(event,'${esc(no)}')" ontouchmove="ordTouchMove(event)" ontouchend="ordDragEnd()" style="cursor:grab"><td>${i+1}</td><td class="l">☰ ${esc(EMPS[no].name)}</td><td>${esc(EMPS[no].chucVu||'')}</td><td><button class="btn sm" onclick="ordMove('${esc(no)}',-1)" ${i===0?'disabled':''}>▲</button> <button class="btn sm" onclick="ordMove('${esc(no)}',1)" ${i===ORD.length-1?'disabled':''}>▼</button></td></tr>`).join('')+'</table>'; return; }
@@ -1360,7 +1367,7 @@ const RULE_FIELDS=[['Đơn giá',[['donGiaGio','Giờ làm (đ/giờ)'],['donGia
  ['Cơm',[['comCoMat','1 phần khi có mặt ≥ (giờ)'],['comTC','+1 phần khi tăng ca ≥ (giờ)'],['comK3','+1 phần (ca 3) khi tăng ca ≥ (giờ)']]],
  ['Xếp loại & chuyên cần',[['abcA','Loại A từ (ngày công)'],['abcB','Loại B từ'],['abcC','Loại C từ'],['chuyenCan31','Chuyên cần 31 công (đ)'],['chuyenCan30','Chuyên cần 30 công (đ)']]]];
 function renderCfg(){
-  const id=$('#cDept').value; const d=DEPTS[id]; const R=rulesOf(id);
+  const id=$('#cDept').value; syncFrom(id,''); const d=DEPTS[id]; const R=rulesOf(id);
   let h=`<div class="card"><h4>Bộ phận</h4><div class="kv"><span>Mã (không đổi)</span><input value="${esc(id||'')}" disabled style="text-align:left"></div><div class="kv"><span>Tên hiển thị</span><input id="cTen" value="${esc(d?d.ten:'')}" style="text-align:left;width:220px"></div><div class="kv"><span>Tên trên Hik (để nhập Excel khớp)</span><input id="cTenHik" value="${esc(d?d.tenHik||'':'')}" style="text-align:left;width:220px"></div><div class="kv"><span>Công ty</span><input id="cCty" value="${esc(d?d.congTy||'':'')}" style="text-align:left;width:220px"></div><div class="kv"><span>Thứ tự</span><input id="cThuTu" value="${d?d.thuTu||0:0}"></div>
    <div class="kv"><span>Kiểu tính lương</span><select id="cKieu" onchange="cfgToggle()">${Object.keys(KIEU).map(k=>`<option value="${k}" ${(d&&d.kieu||'gio_he')===k?'selected':''}>${KIEU[k]}</option>`).join('')}</select></div>
    <div class="kv"><span>Hiện ở tab Chấm công — tổ trưởng chốt giờ vào/ra mỗi ngày (bỏ tick = tính hoàn toàn theo máy)</span><input type="checkbox" id="cTuCham" ${d&&(d.tuCham||d.gioCoDinh)?'checked':''} style="width:auto"></div>

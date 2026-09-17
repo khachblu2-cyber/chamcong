@@ -1,8 +1,8 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.4.1
- Ngày      : 16/09/2026
+ Phiên bản : V1.4.2
+ Ngày      : 17/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
  Mục đích  : Xem chấm công từ 4 máy Hikvision (đẩy về qua Cloud
@@ -13,6 +13,10 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.4.2 – (1) Nút "Giờ theo TT" áp cho cả người không quét (→ có mặt, máy không
+            nhận) và thiếu quét ra (→ ra theo giờ TT); lý do ghi theo từng trường hợp.
+            (2) Cache sự kiện chỉ với ngày đã qua ≥3 ngày; ↻ Làm mới xoá toàn bộ cache
+            sự kiện rồi tải lại (khắc phục dữ liệu máy đẩy trễ không hiện).
    V1.4.1 – (1) Báo cáo ngày xuất Excel đúng mẫu BC_NHÂN_SỰ (ExcelJS): TNR, gộp ô,
             nền xanh ngọc/vàng, viền, dòng TỔNG có SUM; không cột P. (2) Ghi chú nhập
             trực tiếp trên bảng, lưu lines/{tổ_ngày}.bcNote; doc chỉ có ghi chú không
@@ -300,7 +304,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.1</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.2</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -731,7 +735,8 @@ function rulesOf(deptId){ const R=Object.assign({},DEFAULT_RULES,(DEPTS[deptId]&
 async function loadEvents(empNos, from, to, force){
   const key=[...empNos].sort().join(',')+'|'+from+'|'+to; // khoá theo đúng danh sách mã NV
   if(!force && EVCACHE[key]) return EVCACHE[key];
-  const pastKey=(addDays(to,2)<=vnDate(Date.now()))?'cc_ev_'+evHash(key):null; /* V1.3.8: sự kiện các ngày đã qua không đổi → cache trong máy */
+  const pastKey=(addDays(to,3)<=vnDate(Date.now()))?'cc_ev_'+evHash(key):null; /* V1.3.8: sự kiện các ngày đã qua không đổi → cache trong máy; V1.4.2: chỉ khi đã qua ≥3 ngày */
+  if(force&&pastKey){ try{ localStorage.removeItem(pastKey); }catch(e){} }
   if(pastKey&&!force){ try{ const c=localStorage.getItem(pastKey); if(c){ const out=JSON.parse(c).map(a=>({employeeNo:a[0],ms:a[1],mac:a[2],deviceName:a[3]||''})); EVCACHE[key]=out; return out; } }catch(e){} }
   const t0=TS.fromMillis(vnMs(addDays(from,-1),'00:00')), t1=TS.fromMillis(vnMs(addDays(to,2),'00:00'));
   const out=[]; const chunks=[]; for(let i=0;i<empNos.length;i+=30) chunks.push(empNos.slice(i,i+30));
@@ -808,7 +813,8 @@ async function saveBCNote(deptId,date,val){ val=String(val||'').trim(); try{ awa
 function fillChamDeptSel(){ const ids=myDepts().filter(isTuCham); const sel=$('#cDeptSel'); const v=sel.value; sel.innerHTML=ids.map(id=>`<option value="${id}">${esc(DEPTS[id].ten)}</option>`).join('')||'<option value="">(chưa bật tổ nào)</option>'; if(v&&ids.includes(v)) sel.value=v; }
 function shiftChamDay(n){ $('#cDate').value=addDays($('#cDate').value,n); loadCham(); }
 let CHAM=null, CHAMCTX=null;
-async function loadCham(force){ CFILTER=null; if(force){ try{ await loadBase(true); fillDeptSelects(); }catch(e){ toast(errMsg(e),6000); } } syncFrom($('#cDeptSel')&&$('#cDeptSel').value,($('#cDate')&&$('#cDate').value||'').slice(0,7));
+function clearEvCache(){ try{ Object.keys(localStorage).filter(k=>k.startsWith('cc_ev_')).forEach(k=>localStorage.removeItem(k)); }catch(e){} }
+async function loadCham(force){ CFILTER=null; if(force){ clearEvCache(); try{ await loadBase(true); fillDeptSelects(); }catch(e){ toast(errMsg(e),6000); } } /* V1.4.2: Làm mới xoá cache sự kiện */ syncFrom($('#cDeptSel')&&$('#cDeptSel').value,($('#cDate')&&$('#cDate').value||'').slice(0,7));
   const dept=$('#cDeptSel').value, date=$('#cDate').value;
   if(!dept){ $('#cLine').innerHTML='<div class="note info">Chưa có bộ phận nào bật "Tổ trưởng tự chấm". Vào Cấu hình → tick "Tổ trưởng tự chấm (theo giờ tổ trưởng)" cho bộ phận cần dùng.</div>'; $('#cList').innerHTML=''; $('#cStat').innerHTML=''; $('#cFoot').innerHTML=''; return; }
   const emps=deptEmps(dept); const nos=emps.map(e=>String(e.employeeNo)); $('#cCount').textContent=nos.length+' NV';
@@ -906,7 +912,7 @@ function ttAllowed(no,date,mode){ const lim=maxTT(CHAMCTX?CHAMCTX.dept:(EMPS[no]
 let cSel=new Set();
 function toggleSel(no,on){ if(on) cSel.add(no); else cSel.delete(no); renderCham(); }
 function selAllCham(on){ cSel=new Set(on?Object.keys(CHAM):[]); renderCham(); }
-const BULK={ttGio:{mode:'chuyenDu',title:'Giờ theo tổ trưởng cho',sub:'trả đủ giờ tổ trưởng dù máy thấp hơn',reason:'Tổ trưởng trả đủ giờ',btn:'Xác nhận'},mayGio:{mode:'may',title:'Giờ theo máy cho',sub:'giữ nguyên giờ máy, tổ trưởng xác nhận đã xem',reason:'Tổ trưởng xác nhận giờ máy',btn:'Xác nhận'},xc:{mode:'xcRieng',title:'Xả ca (XC) cho',sub:'mỗi người 1 công, không giờ, không cơm',reason:'XC · xả ca (tổ trưởng)',btn:'Xác nhận XC'},P:{mode:'P',title:'Đánh P · nghỉ phép cho',sub:'không lương, không tính công',reason:'P · nghỉ phép (tổ trưởng)',btn:'Xác nhận P'},reset:{title:'Về mặc định cho',sub:'xoá mọi điều chỉnh, app tự tính theo giờ tổ trưởng + máy',btn:'Về mặc định'}};
+const BULK={ttGio:{mode:'chuyenDu',title:'Giờ theo tổ trưởng cho',sub:'trả đủ giờ tổ trưởng dù máy thấp hơn; không quét = có mặt máy không nhận; thiếu quét ra = ra theo giờ TT',reason:'Tổ trưởng trả đủ giờ',btn:'Xác nhận'},mayGio:{mode:'may',title:'Giờ theo máy cho',sub:'giữ nguyên giờ máy, tổ trưởng xác nhận đã xem',reason:'Tổ trưởng xác nhận giờ máy',btn:'Xác nhận'},xc:{mode:'xcRieng',title:'Xả ca (XC) cho',sub:'mỗi người 1 công, không giờ, không cơm',reason:'XC · xả ca (tổ trưởng)',btn:'Xác nhận XC'},P:{mode:'P',title:'Đánh P · nghỉ phép cho',sub:'không lương, không tính công',reason:'P · nghỉ phép (tổ trưởng)',btn:'Xác nhận P'},reset:{title:'Về mặc định cho',sub:'xoá mọi điều chỉnh, app tự tính theo giờ tổ trưởng + máy',btn:'Về mặc định'}};
 async function bulkCham(kind){
   const {dept,date}=CHAMCTX; if(!canEditCham(dept,date)){ toast('Ngày đã chốt.'); return; }
   let nos=[...cSel].filter(no=>CHAM[no]);
@@ -918,10 +924,14 @@ async function bulkCham(kind){
   if(kind==='xc'&&line&&line.xc){ toast('Cả tổ đang XC rồi.'); return; }
   if(!line&&kind!=='reset'){ toast('Chốt giờ tổ trưởng trước.'); return; }
   if(kind==='mayGio'){ const skip=nos.filter(no=>CHAM[no].days[date].thieuRa||CHAM[no].days[date].vang); if(skip.length){ nos=nos.filter(no=>!skip.includes(no)); toast(`Bỏ qua ${skip.length} người thiếu quét ra/vắng (không có giờ máy để giữ).`,5000); if(!nos.length) return; } }
+  /* V1.4.2: Giờ theo TT áp cho cả người thiếu quét ra (ra theo giờ TT) và không quét (có mặt, máy không nhận) */
+  const modeOf=no=>{ if(kind!=='ttGio') return B.mode; const d=CHAM[no].days[date]; return d.vang?'comat':d.thieuRa?'raChuyen':'chuyenDu'; };
+  const reasonOf=no=>{ const m=modeOf(no); return m==='comat'?'Có mặt, máy không nhận (tổ trưởng)':m==='raChuyen'?'Ra theo giờ tổ trưởng (thiếu quét ra)':B.reason; };
+  window._bulkMode={modeOf,reasonOf};
   if(B.mode&&ME.role==='totruong'){ const blocked=nos.filter(no=>!ttAllowed(no,date,B.mode)); if(blocked.length){ nos=nos.filter(no=>!blocked.includes(no)); toast(`${blocked.length} người đã hết ${maxTT(dept)} lần sửa tháng này, bỏ qua (liên hệ kế toán).`,6000); if(!nos.length) return; } }
   const had=nos.filter(no=>CHAM[no].days[date].adj&&(CHAM[no].days[date].adj.mode||CHAM[no].days[date].adj.reason));
   const R=rulesOf(dept);
-  const names=nos.map(no=>{ const e=EMPS[no]; let extra=''; if(line&&(kind==='ttGio'||kind==='mayGio')){ const d=CHAM[no].days[date]; extra=kind==='ttGio'?` · máy ${d.mh!=null?fmtH(d.mh):'—'} → ${isDiem(dept)?(rulesOf(dept).diemDu||10)+' điểm':fmtH(lineBounds(line).hours)+'h'}`:` · giữ ${d.mh!=null?fmtH(d.mh)+'h':'chưa có giờ ra'}`; } return esc(e.name)+extra; });
+  const names=nos.map(no=>{ const e=EMPS[no]; let extra=''; if(line&&(kind==='ttGio'||kind==='mayGio')){ const d=CHAM[no].days[date]; extra=kind==='ttGio'?` · ${d.vang?'không quét → có mặt, máy không nhận':d.thieuRa?'thiếu quét ra → ra theo giờ TT':'máy '+(d.mh!=null?fmtH(d.mh):'—')} → ${isDiem(dept)?(rulesOf(dept).diemDu||10)+' điểm':fmtH(lineBounds(line).hours)+'h'}`:` · giữ ${d.mh!=null?fmtH(d.mh)+'h':'chưa có giờ ra'}`; } return esc(e.name)+extra; });
   openModal(`<h3>${B.title} ${nos.length} người</h3><div class="sub">${fmtDateVN(date)} · ${B.sub}</div><div class="names">${names.join('<br>')}</div>
    ${kind!=='reset'?`<div class="fld"><label>Ghi chú (không bắt buộc)</label><input id="bNote"></div>`:''}
    ${had.length?`<div class="note" style="margin:0 0 10px">${had.length} người đã có điều chỉnh riêng sẽ bị ghi đè.</div>`:''}
@@ -934,8 +944,8 @@ async function bulkChamDo(kind){
   let b=db.batch(), n=0; const line=lineOf(dept,date); const R=rulesOf(dept);
   for(const no of nos){ const ref=db.collection('adjustments').doc(no+'_'+date);
     if(kind==='reset'){ b.delete(ref); b.set(ref.collection('log').doc(),{by:ME.name,byUser:ME.username,at:TS.now(),deleted:true,bulk:true}); }
-    else { const mode=B.mode; const s=CHAM[no].days[date].session; const d=dayFn(dept)(s,line,{mode},R);
-      const doc={employeeNo:no,date,nhom:(ADJ[no+'_'+date]&&ADJ[no+'_'+date].nhom!=null)?ADJ[no+'_'+date].nhom:null,mode,reason:B.reason,note,by:ME.name,byUser:ME.username,byRole:ME.role,at:TS.now(),bulk:true,gioMay:d.mh,gioCham:d.gio}; b.set(ref,doc); b.set(ref.collection('log').doc(),doc); }
+    else { const mode=(window._bulkMode&&window._bulkMode.modeOf)?window._bulkMode.modeOf(no):B.mode; const reason=(window._bulkMode&&window._bulkMode.reasonOf)?window._bulkMode.reasonOf(no):B.reason; const s=CHAM[no].days[date].session; const d=dayFn(dept)(s,line,{mode},R);
+      const doc={employeeNo:no,date,nhom:(ADJ[no+'_'+date]&&ADJ[no+'_'+date].nhom!=null)?ADJ[no+'_'+date].nhom:null,mode,reason,note,by:ME.name,byUser:ME.username,byRole:ME.role,at:TS.now(),bulk:true,gioMay:d.mh,gioCham:d.gio}; b.set(ref,doc); b.set(ref.collection('log').doc(),doc); }
     n++; if(n%200===0){ try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; } b=db.batch(); } }
   try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; }
   cSel.clear(); closeModal(); toast('Đã áp dụng cho '+nos.length+' người'); loadCham();

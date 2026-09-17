@@ -1,8 +1,8 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.4.7
- Ngày      : 17/09/2026
+ Phiên bản : V1.4.8
+ Ngày      : 18/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
  Mục đích  : Xem chấm công từ 4 máy Hikvision (đẩy về qua Cloud
@@ -13,6 +13,10 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.4.8 – (1) Nhập Excel: khớp tên sau khi bỏ dấu; nhóm Hik chưa khớp → đoán theo
+            ĐA SỐ nhân viên của nhóm đang ở tổ nào (dự phòng so tên); xem trước khoá
+            nút Nhập khi còn nhóm chưa gán; tạo tổ mới chỉ khi tick riêng.
+            (2) Nhân viên: nút Xuất Excel (danh sách đang lọc, ExcelJS).
    V1.4.7 – (1) Cách tính điểm mới "Ca N giờ từ giờ vào TT + TC phần dư" (N mặc
             định 10; TT chốt 07–19 = 10 điểm + 2h TC; không bù; cơm quy tắc cũ).
             (2) Chi tiết quét tải giờ TT ngày kề trước/sau để ghép ca giống tab Tháng.
@@ -324,7 +328,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.7</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.8</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="detail">Chi tiết quét</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -417,7 +421,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <select id="eDept" class="chip" onchange="renderEmp()"></select>
     <label class="chk"><input type="checkbox" id="eOnlyNew" onchange="renderEmp()">Chỉ chưa gán tổ</label>
     <span style="flex:1"></span>
-    <label class="btn sm">Nhập Excel <input type="file" accept=".xlsx,.xls,.csv" class="hide" onchange="importEmp(this)"></label>
+    <button class="btn sm" onclick="exportEmp()">Xuất Excel</button><label class="btn sm">Nhập Excel <input type="file" accept=".xlsx,.xls,.csv" class="hide" onchange="importEmp(this)"></label>
     <button class="btn sm" onclick="bulkAssign()">Chuyển bộ phận</button><button class="btn sm hide" id="eOrdBtn" onclick="toggleOrder()">Sắp thứ tự</button><button class="btn sm p" onclick="addEmp()">+ Thêm nhân viên</button>
   </div>
   <div class="note info" id="eNote">Nhân viên tự xuất hiện sau lần quét đầu tiên. Người chưa gán tổ sẽ không được tính công — gán 1 lần là xong.</div>
@@ -1384,6 +1388,17 @@ function ordTouchStart(e,no){ ORD_DRAG=no; e.currentTarget.classList.add('draggi
 function ordTouchMove(e){ if(!ORD_DRAG) return; e.preventDefault(); const t=e.touches[0]; const el=document.elementFromPoint(t.clientX,t.clientY); const tr=el&&el.closest('#eTbl tr[data-no]'); if(tr&&tr.dataset.no!==ORD_DRAG) ordPlace(ORD_DRAG,tr.dataset.no,t.clientY,tr); }
 function ordAZ(){ ORD.sort((a,b)=>(EMPS[a].name||'').localeCompare(EMPS[b].name||'','vi')); renderEmp(); }
 async function ordSave(){ let b=db.batch(); ORD.forEach((no,i)=>{ b.set(db.collection('employees').doc(no),{thuTu:i+1,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); }); try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; } ORD.forEach((no,i)=>{ EMPS[no].thuTu=i+1; }); saveBaseCache(true); ORD=null; toast('Đã lưu thứ tự'); renderEmp(); }
+/* V1.4.8: xuất danh sách nhân viên đang lọc (ExcelJS, có định dạng) */
+function exportEmp(){ if(typeof ExcelJS==='undefined'){ toast('Chưa tải được thư viện Excel (ExcelJS).',6000); return; } const q=($('#eSearch').value||'').toLowerCase(), dept=$('#eDept').value, onlyNew=$('#eOnlyNew').checked;
+  let list=Object.values(EMPS).filter(e=>e.active!==false&&(!dept||(dept==='__none'?!e.boPhan||!DEPTS[e.boPhan]:e.boPhan===dept))&&(!onlyNew||!e.boPhan||!DEPTS[e.boPhan])&&(!q||(e.name||'').toLowerCase().includes(q)||String(e.employeeNo).includes(q)));
+  list.sort((a,b)=>(myDepts().indexOf(a.boPhan)-myDepts().indexOf(b.boPhan))||((a.thuTu||999)-(b.thuTu||999))||String(a.name||'').localeCompare(b.name||''));
+  const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Nhân viên'); const F=(sz,b)=>({name:'Times New Roman',size:sz,bold:!!b}); const thin={style:'thin'}; const box={top:thin,left:thin,bottom:thin,right:thin}; const fillC={type:'pattern',pattern:'solid',fgColor:{argb:'FF66FFFF'}};
+  const H=['STT','Mã máy','Họ tên','Tổ / bộ phận','Công ty','Hệ','Chức vụ','Lương tháng','BH/tháng','Email','Điện thoại','Quét gần nhất']; ws.columns=[{width:6},{width:14},{width:28},{width:24},{width:16},{width:6},{width:14},{width:14},{width:12},{width:24},{width:14},{width:14}];
+  ws.mergeCells('A1:L1'); ws.getCell('A1').value=`DANH SÁCH NHÂN VIÊN${dept&&DEPTS[dept]?' — '+DEPTS[dept].ten:''} · ${fmtDateVN(todayVN())}`; ws.getCell('A1').font=F(16,true); ws.getCell('A1').alignment={horizontal:'center',vertical:'middle'}; ws.getRow(1).height=28;
+  H.forEach((v,i)=>{ const c=ws.getRow(2).getCell(i+1); c.value=v; c.font=F(12,true); c.fill=fillC; c.alignment={horizontal:'center',vertical:'middle',wrapText:true}; c.border=box; }); ws.getRow(2).height=24;
+  list.forEach((e,i)=>{ const row=ws.getRow(3+i); const vals=[i+1,String(e.employeeNo),e.name||'',DEPTS[e.boPhan]?DEPTS[e.boPhan].ten:'(chưa gán)',e.congTy||(DEPTS[e.boPhan]&&DEPTS[e.boPhan].congTy)||'',e.he||1,e.chucVu||'',e.luongThang||0,e.baoHiem||0,e.email||'',e.phone||'',tsMs(e.lastSeen)?new Date(tsMs(e.lastSeen)).toLocaleDateString('vi-VN'):'']; vals.forEach((v,j)=>{ const c=row.getCell(j+1); c.value=v; c.font=F(12,false); c.border=box; c.alignment={vertical:'middle',horizontal:[0,1,5,11].includes(j)?'center':(j===7||j===8?'right':'left')}; if(j===7||j===8) c.numFmt='#,##0'; }); });
+  ws.views=[{state:'frozen',ySplit:2}]; ws.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+  wb.xlsx.writeBuffer().then(buf=>{ const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`NhanVien_${dept&&DEPTS[dept]?slug(DEPTS[dept].ten):'tat-ca'}_${todayVN()}.xlsx`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }).catch(e=>toast('Xuất Excel lỗi: '+(e&&e.message||e),6000)); }
 function renderEmp(){
   const q=($('#eSearch').value||'').toLowerCase(), dept=$('#eDept').value, onlyNew=$('#eOnlyNew').checked; if(dept&&dept!=='__none') syncFrom(dept,'');
   $('#eOrdBtn').classList.toggle('hide',!dept||dept==='__none'); $('#eOrdBtn').textContent=ORD?'Thoát sắp thứ tự':'Sắp thứ tự';
@@ -1429,7 +1444,8 @@ async function importEmp(inp){
   if(hi<0){ toast('Không tìm thấy dòng tiêu đề có "ID/Mã" và "Tên".',5000); return; }
   const hdr=rows[hi].map(norm); const fi=re=>hdr.findIndex(h=>re.test(h));
   const ci={no:fi(/^(id|mã nv|mã|ma nv|employee ?no|employee id)$/),name:fi(/^(tên riêng|họ tên|họ và tên|tên|name|full name)$/),ho:fi(/^(họ|last name)$/),dept:fi(/bộ phận|bo phan|^tổ|phòng ban|department|group|nhóm/),he:fi(/^(hệ|he|hệ số)$/),cty:fi(/công ty|cong ty|company/),chucVu:fi(/chức vụ|position/),email:fi(/e-?mail/),luong:fi(/^(lương|luong|lương tháng|salary)$/),phone:fi(/điện thoại|dien thoai|phone|sđt|sdt/),gender:fi(/giới tính|gioi tinh|gender/),birth:fi(/ngày sinh|ngay sinh|birth/)};
-  const deptByName={}; for(const id in DEPTS){ deptByName[DEPTS[id].ten.trim().toLowerCase()]=id; deptByName[id.toLowerCase()]=id; (DEPTS[id].tenHik||'').split('|').map(x=>x.trim()).filter(Boolean).forEach(x=>deptByName[x.toLowerCase()]=id); } /* V1.4.3: khớp cả mã tổ, nhiều tên Hik cách | */
+  const nk=x=>slug(String(x||'')).toLowerCase().replace(/[^a-z0-9]/g,''); /* V1.4.8: khớp tên sau khi bỏ dấu/ký tự lạ */
+  const deptByName={}; for(const id in DEPTS){ deptByName[nk(DEPTS[id].ten)]=id; deptByName[nk(id)]=id; (DEPTS[id].tenHik||'').split('|').map(x=>x.trim()).filter(Boolean).forEach(x=>deptByName[nk(x)]=id); }
   const COMPANY_NAMES=new Set(['châu bá thảo','châu cẩm','tấn khởi','hồng đồng']);
   const items=[]; const newDepts={}; // tenHik -> dept doc
   for(const r of rows.slice(hi+1)){ const no=String(r[ci.no]||'').trim(); let name=String(r[ci.name]||'').trim(); if(ci.ho>=0&&r[ci.ho]&&String(r[ci.ho]).trim()!=='--') name=(String(r[ci.ho]).trim()+' '+name).trim(); if(!no||!name) continue;
@@ -1443,7 +1459,7 @@ async function importEmp(inp){
       if(parts.length>=3&&!congTy) congTy=parts[parts.length-2]; else if(parts.length===2&&!congTy) congTy=parts[0];
       if(/ngh[iỉĩ]\s*(việc|viec)|nv ngh[iỉĩ]|nhân viên ngh[iỉĩ]|đã ngh[iỉĩ]/i.test(dn)){ nghi=true; deptName=dn; dn=''; }
       else if(parts.length===2&&COMPANY_NAMES.has(dn.toLowerCase())) dn='';
-      if(dn){ deptName=dn; deptId=deptByName[dn.toLowerCase()]||null; if(!deptId){ const sl=slug(dn).toLowerCase().replace(/^-+|-+$/g,''); if(sl&&DEPTS[sl]) deptId=sl; } if(!deptId){ let id=slug(dn).toLowerCase().replace(/^-+|-+$/g,'')||('bp-'+Object.keys(DEPTS).length); if(DEPTS[id]||newDepts[id]) id+='-'+(Object.keys(DEPTS).length+Object.keys(newDepts).length); newDepts[id]={ten:dn,tenHik:dn,congTy:congTy||'',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+Object.keys(newDepts).length+1,autoCreated:true}; deptByName[dn.toLowerCase()]=id; deptId=id; } } }
+      if(dn){ deptName=dn; deptId=deptByName[nk(dn)]||null; if(!deptId){ let id=slug(dn).toLowerCase().replace(/^-+|-+$/g,'')||('bp-'+Object.keys(DEPTS).length); if(DEPTS[id]||newDepts[id]) id+='-'+(Object.keys(DEPTS).length+Object.keys(newDepts).length); newDepts[id]={ten:dn,tenHik:dn,congTy:congTy||'',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+Object.keys(newDepts).length+1,autoCreated:true,members:[]}; deptByName[nk(dn)]=id; deptId=id; } if(newDepts[deptId]) newDepts[deptId].members.push(no); } }
     if(congTy) info.congTy=congTy;
     const cur=EMPS[no]; const isNew=!cur;
     const deptChange=!isNew&&!nghi&&deptId&&cur.boPhan&&cur.boPhan!==deptId;
@@ -1452,21 +1468,28 @@ async function importEmp(inp){
     items.push({no,info,deptId,deptName,nghi,isNew,deptChange,firstAssign,toNghi,oldDept:cur?cur.boPhan:''});
   }
   if(!items.length){ toast('File không có dòng nhân viên nào.'); return; }
+  /* V1.4.8: đoán tổ cho nhóm Hik theo ĐA SỐ nhân viên của nhóm đang thuộc tổ nào trong app; dự phòng so tên */
+  const guessAll={}; for(const nid in newDepts){ const cnt={}; (newDepts[nid].members||[]).forEach(no=>{ const bp=EMPS[no]&&EMPS[no].boPhan; if(bp&&DEPTS[bp]) cnt[bp]=(cnt[bp]||0)+1; }); const best=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]; guessAll[nid]={id:best||guessDept(newDepts[nid].ten)||'',n:best?cnt[best]:0,tot:(newDepts[nid].members||[]).length,byEmp:!!best}; }
+  window._impGuess=guessAll; const eff=id=>(newDepts[id]&&guessAll[id]&&guessAll[id].id)?guessAll[id].id:id;
+  items.forEach(x=>{ if(!x.isNew&&!x.nghi&&x.oldDept){ x.deptChange=eff(x.deptId)!==x.oldDept; } });
   const cNew=items.filter(x=>x.isNew).length, cChg=items.filter(x=>x.deptChange), cFirst=items.filter(x=>x.firstAssign).length, cNghi=items.filter(x=>x.toNghi).length, cUpd=items.filter(x=>!x.isNew).length;
-  const dn=id=>DEPTS[id]?DEPTS[id].ten:(newDepts[id]?newDepts[id].ten+' (mới)':id||'—');
+  const dn=id=>DEPTS[id]?DEPTS[id].ten:(newDepts[id]?(guessAll[id]&&guessAll[id].id?DEPTS[guessAll[id].id].ten+' (tự khớp)':newDepts[id].ten+' (mới)'):id||'—');
   openModal(`<h3>Xem trước nhập Excel</h3><div class="sub">${items.length} dòng · ${f.name}</div>
    <div class="names">• Thêm mới: <b>${cNew}</b> người${cNew?' (tự gán tổ theo Hik)':''}<br>• Cập nhật thông tin (tên, email, điện thoại…): <b>${cUpd}</b> người<br>• Gán tổ lần đầu (đang "chưa gán"): <b>${cFirst}</b><br>• Đổi tổ so với app: <b>${cChg.length}</b><br>• Chuyển sang nghỉ việc: <b>${cNghi}</b><br>• Nhóm Hik chưa khớp tổ nào: <b>${Object.keys(newDepts).length}</b></div>
-   ${Object.keys(newDepts).length?`<div class="note" style="margin:8px 0">Chọn tổ tương ứng cho từng nhóm Hik (app tự lưu vào "Tên trên Hik" để lần sau khớp). Để "(tạo tổ mới)" nếu thật sự là tổ mới.</div><div class="names" style="max-height:220px;overflow:auto">${Object.keys(newDepts).map(nid=>`<div class="kv"><span>${esc(newDepts[nid].ten)}</span><select class="impMap" data-nid="${esc(nid)}"><option value="">(tạo tổ mới)</option>${myDepts().map(id=>`<option value="${id}" ${guessDept(newDepts[nid].ten)===id?'selected':''}>${esc(DEPTS[id].ten)}</option>`).join('')}</select></div>`).join('')}</div>`:''}
+   ${Object.keys(newDepts).length?`<div class="note" style="margin:8px 0">Nhóm Hik chưa khớp tên tổ nào trong app. App đã <b>đoán theo nhân viên</b> (đa số người của nhóm đang ở tổ nào). Kiểm tra rồi Xác nhận — app sẽ ghi tên Hik vào "Tên trên Hik" để lần sau khớp thẳng. Muốn tạo tổ mới phải tick ô bên cạnh.</div><div class="names" style="max-height:260px;overflow:auto">${Object.keys(newDepts).map(nid=>{ const g=guessAll[nid]; return `<div class="kv"><span>${esc(newDepts[nid].ten)} <small class="small">(${g.tot} người${g.byEmp?` · ${g.n} đang ở tổ được chọn`:g.id?' · đoán theo tên':' · <b style=\"color:var(--rust)\">chưa đoán được</b>'})</small></span><span><select class="impMap" data-nid="${esc(nid)}" onchange="impCheck()"><option value="">— chọn tổ —</option>${myDepts().map(id=>`<option value="${id}" ${g.id===id?'selected':''}>${esc(DEPTS[id].ten)}</option>`).join('')}</select> <label class="chk" style="display:inline-flex"><input type="checkbox" class="impNew" data-nid="${esc(nid)}" onchange="impCheck()"> tạo tổ mới</label></span></div>`; }).join('')}</div>`:''}
    <label class="chk"><input type="checkbox" id="impDept"> <b>Cập nhật bộ phận theo Hik</b> — áp dụng ${cChg.length} đổi tổ và ${cNghi} nghỉ việc (không tick: giữ tổ hiện tại trong app)</label>
    ${cChg.length?`<div class="names" style="max-height:140px;overflow:auto;margin-top:8px">${cChg.slice(0,60).map(x=>`${esc(x.info.name)}: ${esc(dn(x.oldDept))} → ${esc(dn(x.deptId))}`).join('<br>')}${cChg.length>60?'<br>…':''}</div>`:''}
-   <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="importEmpDo()">Xác nhận nhập</button></div>`);
-  window._imp={items,newDepts};
+   <div id="impWarn" class="small" style="color:var(--rust)"></div><div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" id="impGo" onclick="importEmpDo()">Xác nhận nhập</button></div>`);
+  window._imp={items,newDepts}; impCheck();
 }
+/* V1.4.8: khoá nút Nhập khi còn nhóm Hik chưa gán tổ và chưa tick tạo mới */
+function impCheck(){ const miss=[]; $$('#modal .impMap').forEach(sl=>{ const nid=sl.dataset.nid; const nw=$(`#modal .impNew[data-nid="${nid}"]`); if(nw&&nw.checked){ sl.disabled=true; return; } sl.disabled=false; if(!sl.value) miss.push(nid); }); const btn=$('#impGo'); if(btn) btn.disabled=miss.length>0; const w=$('#impWarn'); if(w) w.textContent=miss.length?`Còn ${miss.length} nhóm Hik chưa chọn tổ — chọn tổ hoặc tick "tạo tổ mới" mới nhập được.`:''; }
 /* V1.4.3: đoán tổ cho nhóm Hik chưa khớp — cùng mã slug, hoặc tên chứa nhau */
 function guessDept(hikName){ const sl=slug(hikName).toLowerCase().replace(/^-+|-+$/g,''); if(DEPTS[sl]) return sl; const key=hikName.toLowerCase().replace(/^[\d.\s_-]+/,'').replace(/_?a\s*(hung|hùng|phan)$/i,'').replace(/[^\p{L}\p{N}]+/gu,''); if(key.length<3) return ''; for(const id of myDepts()){ const t=DEPTS[id].ten.toLowerCase().replace(/^(cbt|tk)_/,'').replace(/[^\p{L}\p{N}]+/gu,''); if(t&&(t===key||t.includes(key)||key.includes(t))) return id; } return ''; }
 async function importEmpDo(){
   const {items,newDepts}=window._imp; const byHik=$('#impDept').checked;
-  const mapSel={}; $$('#modal .impMap').forEach(sl=>{ if(sl.value) mapSel[sl.dataset.nid]=sl.value; });
+  const mapSel={}; $$('#modal .impMap').forEach(sl=>{ const nw=$(`#modal .impNew[data-nid="${sl.dataset.nid}"]`); if(nw&&nw.checked) return; if(sl.value) mapSel[sl.dataset.nid]=sl.value; });
+  { const left=Object.keys(newDepts).filter(nid=>!mapSel[nid]&&!($(`#modal .impNew[data-nid="${nid}"]`)&&$(`#modal .impNew[data-nid="${nid}"]`).checked)); if(left.length){ toast('Còn nhóm Hik chưa chọn tổ.'); return; } }
   closeModal();
   const tenHikAdd={}; for(const nid in mapSel){ const target=mapSel[nid]; const hik=newDepts[nid].ten; items.forEach(x=>{ if(x.deptId===nid){ x.deptId=target; x.deptChange=!x.isNew&&!x.nghi&&!!(EMPS[x.no]&&EMPS[x.no].boPhan)&&EMPS[x.no].boPhan!==target; x.firstAssign=!x.isNew&&!x.nghi&&!(EMPS[x.no]&&EMPS[x.no].boPhan); } }); const cur=(DEPTS[target].tenHik||'').split('|').map(v=>v.trim()).filter(Boolean); if(!cur.includes(hik)) cur.push(hik); tenHikAdd[target]=cur.join(' | '); delete newDepts[nid]; }
   for(const id in tenHikAdd){ try{ await db.collection('departments').doc(id).set({tenHik:tenHikAdd[id],updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); DEPTS[id].tenHik=tenHikAdd[id]; }catch(e){ toast(errMsg(e),8000); return; } }

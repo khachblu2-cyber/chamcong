@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.4.3
+ Phiên bản : V1.4.4
  Ngày      : 17/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,9 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.4.4 – Sửa lỗi cache nhân viên (V1.3.8): mốc thời gian Firestore bị lưu thành
+            object thường → tab Nhân viên gãy, mọi tổ hiện 0 NV. Cache cũ bị bỏ qua và
+            tải lại; mọi chỗ đọc mốc thời gian dùng hàm tsMs() an toàn.
    V1.4.3 – (1) Nhập Excel: khớp tổ theo Tên trên Hik (nhiều tên cách |) → tên → mã;
             nhóm chưa khớp → xem trước có ô chọn tổ (tự đoán), lưu vào Tên trên Hik.
             (2) Cấu hình: nút "Gộp vào tổ khác" (chuyển người, mang giờ TT/ghi chú,
@@ -310,7 +313,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.3</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.4</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -714,13 +717,16 @@ function showTab(t){ saveBaseCache(); $$('#tabs button').forEach(b=>b.classList.
 /* V1.3.8: cache danh sách bộ phận + nhân viên trong máy 12 giờ (tiết kiệm ~900 lượt đọc mỗi lần mở).
    Mọi thay đổi trong app ghi thẳng vào DEPTS/EMPS nên cache cập nhật lại khi đổi tab; "Làm mới" ở Chấm công tải lại từ Firestore. */
 const BASE_TTL=12*3600000;
-function tsRep(k,v){ return (v&&typeof v==='object'&&typeof v.toMillis==='function')?{__ts:v.toMillis()}:v; }
-function tsRev(k,v){ if(v&&typeof v==='object'&&v.__ts!=null){ const ms=v.__ts; return {toMillis:()=>ms,toDate:()=>new Date(ms),seconds:Math.floor(ms/1000)}; } return v; }
+/* V1.4.4: Firestore Timestamp có toJSON → JSON.stringify đổi thành {seconds,nanoseconds} TRƯỚC khi gọi replacer; phải nhận cả dạng đó */
+function tsRep(k,v){ if(v&&typeof v==='object'){ if(typeof v.toMillis==='function') return {__ts:v.toMillis()}; if(typeof v.seconds==='number'&&typeof v.nanoseconds==='number'&&Object.keys(v).length<=2) return {__ts:v.seconds*1000+Math.round(v.nanoseconds/1e6)}; } return v; }
+function tsRev(k,v){ if(v&&typeof v==='object'){ if(v.__ts!=null){ const ms=v.__ts; return {toMillis:()=>ms,toDate:()=>new Date(ms),seconds:Math.floor(ms/1000)}; } if(typeof v.seconds==='number'&&typeof v.nanoseconds==='number'&&Object.keys(v).length<=2){ const ms=v.seconds*1000+Math.round(v.nanoseconds/1e6); return {toMillis:()=>ms,toDate:()=>new Date(ms),seconds:v.seconds}; } } return v; }
+/* mốc thời gian an toàn: nhận Timestamp, {seconds}, số, hoặc thiếu */
+function tsMs(v){ if(!v) return 0; if(typeof v==='number') return v; if(typeof v.toMillis==='function') return v.toMillis(); if(typeof v.seconds==='number') return v.seconds*1000; return 0; }
 let BASE_SAVED_AT=0;
-function saveBaseCache(force){ try{ if(!force&&Date.now()-BASE_SAVED_AT<180000) return; /* V1.4.3: tối đa 3 phút/lần, trừ khi có thay đổi (force) */ if(Object.keys(EMPS).length){ localStorage.setItem('cc_base',JSON.stringify({t:Date.now(),DEPTS,EMPS},tsRep)); BASE_SAVED_AT=Date.now(); } }catch(e){} }
+function saveBaseCache(force){ try{ if(!force&&Date.now()-BASE_SAVED_AT<180000) return; /* V1.4.3: tối đa 3 phút/lần, trừ khi có thay đổi (force) */ if(Object.keys(EMPS).length){ localStorage.setItem('cc_base',JSON.stringify({v:2,t:Date.now(),DEPTS,EMPS},tsRep)); BASE_SAVED_AT=Date.now(); } }catch(e){} }
 window.addEventListener('pagehide',()=>saveBaseCache(true));
 async function loadBase(force){
-  if(!force){ try{ const c=JSON.parse(localStorage.getItem('cc_base')||'null',tsRev); if(c&&c.t&&Date.now()-c.t<BASE_TTL&&c.DEPTS&&c.EMPS){ DEPTS=c.DEPTS; EMPS=c.EMPS; return; } }catch(e){} }
+  if(!force){ try{ const c=JSON.parse(localStorage.getItem('cc_base')||'null',tsRev); if(c&&c.v===2&&c.t&&Date.now()-c.t<BASE_TTL&&c.DEPTS&&c.EMPS){ DEPTS=c.DEPTS; EMPS=c.EMPS; return; } /* V1.4.4: chỉ nhận cache phiên bản mới */ }catch(e){} }
   const [d,e]=await Promise.all([db.collection('departments').get(), db.collection('employees').get()]);
   DEPTS={}; d.forEach(x=>DEPTS[x.id]=x.data());
   EMPS={}; e.forEach(x=>EMPS[x.id]=Object.assign({employeeNo:x.id},x.data()));
@@ -986,7 +992,7 @@ function openCham(no,date){
    <div class="fld"><label>Lý do (tự điền theo lựa chọn)</label><div class="ro" id="cReasonShow"></div></div>
    <div class="fld"><label>Ghi chú thêm (không bắt buộc)</label><input id="cNote" value="${esc(a.note||'')}" placeholder="vd: máy 4 không nhận mặt buổi sáng"></div>
    <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button>${a.mode||a.reason?`<button class="btn danger" onclick="delCham('${esc(no)}','${date}')" ${edit?'':'disabled'}>Về mặc định</button>`:''}<button class="btn p" onclick="saveCham('${esc(no)}','${date}')" ${edit?'':'disabled'}>Lưu</button></div>
-   <div class="hist">${a.by?`Sửa gần nhất: ${esc(a.by)} · ${a.at?new Date(a.at.toMillis()).toLocaleString('vi-VN'):''}`:'Chưa có điều chỉnh.'}${edit?'':'<br><b>Ngày đã chốt — chỉ kế toán/quản trị sửa được.</b>'}<br>Kế toán thấy cả giờ máy lẫn giờ chấm và lý do.</div>`);
+   <div class="hist">${a.by?`Sửa gần nhất: ${esc(a.by)} · ${tsMs(a.at)?new Date(tsMs(a.at)).toLocaleString('vi-VN'):''}`:'Chưa có điều chỉnh.'}${edit?'':'<br><b>Ngày đã chốt — chỉ kế toán/quản trị sửa được.</b>'}<br>Kế toán thấy cả giờ máy lẫn giờ chấm và lý do.</div>`);
   window._chamCtx={no,date,line,R,s,base,dept};
   chamPreview();
 }
@@ -1092,7 +1098,7 @@ async function openAdj(no,date){
    <div class="fld"><label>Lý do <span style="color:var(--rust)">*</span></label><select id="aReason">${['',...LYDO].map(x=>`<option ${a.reason===x?'selected':''}>${x}</option>`).join('')}</select></div>
    <div class="fld"><label>Ghi chú</label><input id="aNote" value="${esc(a.note||'')}"></div>
    <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button>${a.reason?'<button class="btn danger" onclick="delAdj(\''+esc(no)+'\',\''+date+'\')">Xoá điều chỉnh</button>':''}<button class="btn p" onclick="saveAdj('${esc(no)}','${date}')">Lưu điều chỉnh</button></div>
-   <div class="hist">${a.by?`Điều chỉnh gần nhất: ${esc(a.by)} · ${a.at?new Date(a.at.toMillis()).toLocaleString('vi-VN'):''}`:'Chưa có điều chỉnh cho ngày này.'}${hist&&!hist.empty?'<br>'+hist.docs.map(x=>{const v=x.data();return esc(v.by)+' · '+new Date(v.at.toMillis()).toLocaleString('vi-VN')+' · '+esc(v.reason||'')+(v.deleted?' (xoá)':'');}).join('<br>'):''}<br>Mọi điều chỉnh đều ghi tên người sửa và thời điểm; kế toán thấy đầy đủ.</div>`);
+   <div class="hist">${a.by?`Điều chỉnh gần nhất: ${esc(a.by)} · ${tsMs(a.at)?new Date(tsMs(a.at)).toLocaleString('vi-VN'):''}`:'Chưa có điều chỉnh cho ngày này.'}${hist&&!hist.empty?'<br>'+hist.docs.map(x=>{const v=x.data();return esc(v.by)+' · '+new Date(v.at.toMillis()).toLocaleString('vi-VN')+' · '+esc(v.reason||'')+(v.deleted?' (xoá)':'');}).join('<br>'):''}<br>Mọi điều chỉnh đều ghi tên người sửa và thời điểm; kế toán thấy đầy đủ.</div>`);
   window._adjCtx={no,date,s,R}; adjPreview();
 }
 function fmtDateVN(d){ const w=['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Thứ sáu','Thứ bảy'][new Date(d+'T00:00:00Z').getUTCDay()]; return `${w} ${d.slice(8,10)}/${d.slice(5,7)}/${d.slice(0,4)}`; }
@@ -1221,7 +1227,7 @@ async function loadBC(force){
     const quet=emps.filter(x=>x.days[date].in&&!x.days[date].isP).length; /* V1.3.8: P không đếm */
     const present=x=>{ const y=x.days[date]; return !y.isP&&!y.nghiCa&&(!!y.in||['comat','tay','chuyenDu'].includes(y.mode)); };
     let tt=null, ttTxt=''; if(!tu) tt=quet; else if(!line) ttTxt='chưa chốt'; else if(line.xc){ tt=0; ttTxt='XC'; } else tt=emps.filter(present).length;
-    const khong=tt==null?null:Math.max(0,tt-quet); const moi=emps.filter(x=>x.emp.firstSeen&&x.emp.firstSeen.toMillis&&x.emp.firstSeen.toMillis()>=since).length;
+    const khong=tt==null?null:Math.max(0,tt-quet); const moi=emps.filter(x=>tsMs(x.emp.firstSeen)>=since&&tsMs(x.emp.firstSeen)>0).length;
     const comat=emps.filter(x=>x.days[date].mode==='comat').length; const p=emps.filter(x=>x.days[date].isP).length; const nghiCa=emps.filter(x=>x.days[date].nghiCa).length;
     const notes=[]; if(moi) notes.push(moi+' người mới'); if(tu&&!line) notes.push('Tổ trưởng chưa chốt giờ'); if(tu&&line&&line.xc) notes.push('XC cả tổ'); if(!quet&&emps.length&&!(line&&line.xc)) notes.push('Chưa có dữ liệu quét'); if(comat) notes.push(comat+' "có mặt, máy không nhận"');
     BC.rows.push({dept:d,ten:DEPTS[d].ten,tong:emps.length,tt,ttTxt,quet,khong,p:p+nghiCa,note:bcNoteOf(d,date),notes:notes.join(' · '),khongList:emps.filter(x=>present(x)&&!x.days[date].in).map(x=>x.emp),vangList:emps.filter(x=>!present(x)&&!x.days[date].isP&&!x.days[date].nghiCa).map(x=>x.emp)}); }
@@ -1329,7 +1335,7 @@ function renderEmp(){
     <td><input class="chip" style="width:100px;text-align:right" value="${e.luongThang||0}" onchange="empSet('${esc(e.employeeNo)}','luongThang',Number(String(this.value).replace(/[^\d]/g,''))||0)"></td>
     <td><input class="chip" style="width:90px;text-align:right" value="${e.baoHiem||0}" onchange="empSet('${esc(e.employeeNo)}','baoHiem',Number(this.value)||0)"></td>
     <td><input class="chip" style="width:150px" value="${esc(e.email||'')}" onchange="empSet('${esc(e.employeeNo)}','email',this.value.trim())"></td><td><input class="chip" style="width:110px" value="${esc(e.phone||'')}" onchange="empSet('${esc(e.employeeNo)}','phone',this.value.trim())"></td>
-    <td class="small">${e.lastSeen?new Date(e.lastSeen.toMillis()).toLocaleDateString('vi-VN'):''}</td>
+    <td class="small">${tsMs(e.lastSeen)?new Date(tsMs(e.lastSeen)).toLocaleDateString('vi-VN'):''}</td>
     <td><input type="checkbox" ${e.active!==false?'checked':''} onchange="empSet('${esc(e.employeeNo)}','active',this.checked)"></td></tr>`).join('')+`</table><div class="small" style="padding:8px">${list.length} nhân viên</div>`;
 }
 async function empSet(no,k,v){ try{ await db.collection('employees').doc(no).set({[k]:v,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); EMPS[no][k]=v; saveBaseCache(true); toast('Đã lưu '+no); if(k==='boPhan') fillDeptSelects(); }catch(e){ toast(errMsg(e),8000); renderEmp(); } }

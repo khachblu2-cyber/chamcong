@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.4.2
+ Phiên bản : V1.4.3
  Ngày      : 17/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,12 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.4.3 – (1) Nhập Excel: khớp tổ theo Tên trên Hik (nhiều tên cách |) → tên → mã;
+            nhóm chưa khớp → xem trước có ô chọn tổ (tự đoán), lưu vào Tên trên Hik.
+            (2) Cấu hình: nút "Gộp vào tổ khác" (chuyển người, mang giờ TT/ghi chú,
+            tài khoản TT, tên Hik; xoá tổ nguồn). (3) Xoá bộ phận kiểm tra thẳng
+            Firestore. (4) Thư viện XLSX/ExcelJS/html2canvas tải sau (defer); cache
+            nhân viên ghi tối đa 3 phút/lần hoặc khi có thay đổi.
    V1.4.2 – (1) Nút "Giờ theo TT" áp cho cả người không quét (→ có mặt, máy không
             nhận) và thiếu quét ra (→ ra theo giờ TT); lý do ghi theo từng trường hợp.
             (2) Cache sự kiện chỉ với ngày đã qua ≥3 ngày; ↻ Làm mới xoá toàn bộ cache
@@ -176,9 +182,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 :root{--ink:#1B2430;--blue:#2A5CAA;--paper:#F7F8FA;--line:#D9DEE5;--muted:#6B7280;--rust:#B4432B;--moss:#3B7A57;--blue-soft:#E4ECF8;--amber:#B7791F;--amber-soft:#FBF1DC;--rust-soft:#F8E3DE;--moss-soft:#E3EFE8}
 *{box-sizing:border-box}html,body{margin:0;background:var(--paper);font-family:"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);font-size:15px}
@@ -304,7 +310,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.2</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.3</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -396,7 +402,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
 
 <!-- CẤU HÌNH -->
 <section id="tab-cfg" class="hide">
-  <div class="bar"><select id="cDept" class="chip" onchange="renderCfg()"></select><button class="btn sm" onclick="newDept()">+ Bộ phận mới</button><span style="flex:1"></span><button class="btn sm danger" onclick="delDept()">Xoá bộ phận</button><button class="btn sm p" onclick="saveDept()">Lưu bộ phận</button></div>
+  <div class="bar"><select id="cDept" class="chip" onchange="renderCfg()"></select><button class="btn sm" onclick="newDept()">+ Bộ phận mới</button><span style="flex:1"></span><button class="btn sm" onclick="mergeDept()">Gộp vào tổ khác</button><button class="btn sm danger" onclick="delDept()">Xoá bộ phận</button><button class="btn sm p" onclick="saveDept()">Lưu bộ phận</button></div>
   <div class="wrap" id="cfgBody"></div>
 </section>
 </div>
@@ -710,7 +716,9 @@ function showTab(t){ saveBaseCache(); $$('#tabs button').forEach(b=>b.classList.
 const BASE_TTL=12*3600000;
 function tsRep(k,v){ return (v&&typeof v==='object'&&typeof v.toMillis==='function')?{__ts:v.toMillis()}:v; }
 function tsRev(k,v){ if(v&&typeof v==='object'&&v.__ts!=null){ const ms=v.__ts; return {toMillis:()=>ms,toDate:()=>new Date(ms),seconds:Math.floor(ms/1000)}; } return v; }
-function saveBaseCache(){ try{ if(Object.keys(EMPS).length) localStorage.setItem('cc_base',JSON.stringify({t:Date.now(),DEPTS,EMPS},tsRep)); }catch(e){} }
+let BASE_SAVED_AT=0;
+function saveBaseCache(force){ try{ if(!force&&Date.now()-BASE_SAVED_AT<180000) return; /* V1.4.3: tối đa 3 phút/lần, trừ khi có thay đổi (force) */ if(Object.keys(EMPS).length){ localStorage.setItem('cc_base',JSON.stringify({t:Date.now(),DEPTS,EMPS},tsRep)); BASE_SAVED_AT=Date.now(); } }catch(e){} }
+window.addEventListener('pagehide',()=>saveBaseCache(true));
 async function loadBase(force){
   if(!force){ try{ const c=JSON.parse(localStorage.getItem('cc_base')||'null',tsRev); if(c&&c.t&&Date.now()-c.t<BASE_TTL&&c.DEPTS&&c.EMPS){ DEPTS=c.DEPTS; EMPS=c.EMPS; return; } }catch(e){} }
   const [d,e]=await Promise.all([db.collection('departments').get(), db.collection('employees').get()]);
@@ -1301,7 +1309,7 @@ function ordDragEnd(){ ORD_DRAG=null; $$('#eTbl tr.dragging').forEach(x=>x.class
 function ordTouchStart(e,no){ ORD_DRAG=no; e.currentTarget.classList.add('dragging'); }
 function ordTouchMove(e){ if(!ORD_DRAG) return; e.preventDefault(); const t=e.touches[0]; const el=document.elementFromPoint(t.clientX,t.clientY); const tr=el&&el.closest('#eTbl tr[data-no]'); if(tr&&tr.dataset.no!==ORD_DRAG) ordPlace(ORD_DRAG,tr.dataset.no,t.clientY,tr); }
 function ordAZ(){ ORD.sort((a,b)=>(EMPS[a].name||'').localeCompare(EMPS[b].name||'','vi')); renderEmp(); }
-async function ordSave(){ let b=db.batch(); ORD.forEach((no,i)=>{ b.set(db.collection('employees').doc(no),{thuTu:i+1,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); }); try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; } ORD.forEach((no,i)=>{ EMPS[no].thuTu=i+1; }); ORD=null; toast('Đã lưu thứ tự'); renderEmp(); }
+async function ordSave(){ let b=db.batch(); ORD.forEach((no,i)=>{ b.set(db.collection('employees').doc(no),{thuTu:i+1,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); }); try{ await b.commit(); }catch(e){ toast(errMsg(e),8000); return; } ORD.forEach((no,i)=>{ EMPS[no].thuTu=i+1; }); saveBaseCache(true); ORD=null; toast('Đã lưu thứ tự'); renderEmp(); }
 function renderEmp(){
   const q=($('#eSearch').value||'').toLowerCase(), dept=$('#eDept').value, onlyNew=$('#eOnlyNew').checked; if(dept&&dept!=='__none') syncFrom(dept,'');
   $('#eOrdBtn').classList.toggle('hide',!dept||dept==='__none'); $('#eOrdBtn').textContent=ORD?'Thoát sắp thứ tự':'Sắp thứ tự';
@@ -1324,7 +1332,7 @@ function renderEmp(){
     <td class="small">${e.lastSeen?new Date(e.lastSeen.toMillis()).toLocaleDateString('vi-VN'):''}</td>
     <td><input type="checkbox" ${e.active!==false?'checked':''} onchange="empSet('${esc(e.employeeNo)}','active',this.checked)"></td></tr>`).join('')+`</table><div class="small" style="padding:8px">${list.length} nhân viên</div>`;
 }
-async function empSet(no,k,v){ try{ await db.collection('employees').doc(no).set({[k]:v,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); EMPS[no][k]=v; toast('Đã lưu '+no); if(k==='boPhan') fillDeptSelects(); }catch(e){ toast(errMsg(e),8000); renderEmp(); } }
+async function empSet(no,k,v){ try{ await db.collection('employees').doc(no).set({[k]:v,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); EMPS[no][k]=v; saveBaseCache(true); toast('Đã lưu '+no); if(k==='boPhan') fillDeptSelects(); }catch(e){ toast(errMsg(e),8000); renderEmp(); } }
 async function addEmp(){
   openModal(`<h3>Thêm nhân viên</h3><div class="sub">Mã máy phải trùng ID trên Hik-Connect thì lượt quét mới nối được</div>
    <div class="two"><div class="fld"><label>Mã máy (ID Hik) *</label><input id="nNo" inputmode="numeric"></div></div>
@@ -1335,10 +1343,10 @@ async function addEmp(){
    <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="addEmpDo()">Thêm</button></div>`); }
 async function addEmpDo(){ const no=$('#nNo').value.trim(), name=$('#nName').value.trim(); if(!no||!name){ toast('Thiếu mã máy hoặc họ tên.'); return; } if(EMPS[no]){ toast('Mã '+no+' đã có: '+EMPS[no].name); return; }
   const u={employeeNo:no,name,boPhan:$('#nDept').value,congTy:$('#nCty').value.trim(),he:Number($('#nHe').value)||1,chucVu:$('#nCv').value.trim(),email:$('#nEmail').value.trim(),phone:$('#nPhone').value.trim(),active:true,source:'manual',createdAt:TS.now(),createdBy:ME.username};
-  try{ await db.collection('employees').doc(no).set(u); }catch(e){ toast(errMsg(e),8000); return; } EMPS[no]=u; closeModal(); toast('Đã thêm '+name); fillDeptSelects(); renderEmp(); }
+  try{ await db.collection('employees').doc(no).set(u); }catch(e){ toast(errMsg(e),8000); return; } EMPS[no]=u; saveBaseCache(true); closeModal(); toast('Đã thêm '+name); fillDeptSelects(); renderEmp(); }
 async function bulkAssign(){ if(!eSel.size){ toast('Chưa tick chọn nhân viên nào.'); return; }
   openModal(`<h3>Chuyển bộ phận cho ${eSel.size} nhân viên</h3><div class="fld"><label>Tổ / bộ phận</label><select id="bDept">${Object.keys(DEPTS).map(d=>`<option value="${d}">${esc(DEPTS[d].ten)}</option>`).join('')}</select></div><div class="fld"><label>Công ty (để trống = giữ nguyên)</label><input id="bCty"></div><div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="bulkAssignDo()">Gán</button></div>`); }
-async function bulkAssignDo(){ const d=$('#bDept').value, c=$('#bCty').value.trim(); const b=db.batch(); for(const no of eSel){ const u={boPhan:d,updatedAt:TS.now(),updatedBy:ME.username}; if(c) u.congTy=c; b.set(db.collection('employees').doc(no),u,{merge:true}); Object.assign(EMPS[no],u); } await b.commit(); toast('Đã gán '+eSel.size+' người'); eSel.clear(); closeModal(); fillDeptSelects(); renderEmp(); }
+async function bulkAssignDo(){ const d=$('#bDept').value, c=$('#bCty').value.trim(); const b=db.batch(); for(const no of eSel){ const u={boPhan:d,updatedAt:TS.now(),updatedBy:ME.username}; if(c) u.congTy=c; b.set(db.collection('employees').doc(no),u,{merge:true}); Object.assign(EMPS[no],u); } await b.commit(); saveBaseCache(true); toast('Đã gán '+eSel.size+' người'); eSel.clear(); closeModal(); fillDeptSelects(); renderEmp(); }
 function titleCase(x){ x=String(x).trim(); if(x!==x.toUpperCase()||!/[A-ZÀ-Ỹ]/.test(x)) return x; return x.toLowerCase().replace(/(^|[\s\-\/(])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()); }
 async function importEmp(inp){
   const f=inp.files[0]; if(!f) return; const buf=await f.arrayBuffer(); const wb=XLSX.read(buf); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}); inp.value='';
@@ -1347,7 +1355,7 @@ async function importEmp(inp){
   if(hi<0){ toast('Không tìm thấy dòng tiêu đề có "ID/Mã" và "Tên".',5000); return; }
   const hdr=rows[hi].map(norm); const fi=re=>hdr.findIndex(h=>re.test(h));
   const ci={no:fi(/^(id|mã nv|mã|ma nv|employee ?no|employee id)$/),name:fi(/^(tên riêng|họ tên|họ và tên|tên|name|full name)$/),ho:fi(/^(họ|last name)$/),dept:fi(/bộ phận|bo phan|^tổ|phòng ban|department|group|nhóm/),he:fi(/^(hệ|he|hệ số)$/),cty:fi(/công ty|cong ty|company/),chucVu:fi(/chức vụ|position/),email:fi(/e-?mail/),luong:fi(/^(lương|luong|lương tháng|salary)$/),phone:fi(/điện thoại|dien thoai|phone|sđt|sdt/),gender:fi(/giới tính|gioi tinh|gender/),birth:fi(/ngày sinh|ngay sinh|birth/)};
-  const deptByName={}; for(const id in DEPTS){ deptByName[DEPTS[id].ten.trim().toLowerCase()]=id; if(DEPTS[id].tenHik) deptByName[DEPTS[id].tenHik.trim().toLowerCase()]=id; }
+  const deptByName={}; for(const id in DEPTS){ deptByName[DEPTS[id].ten.trim().toLowerCase()]=id; deptByName[id.toLowerCase()]=id; (DEPTS[id].tenHik||'').split('|').map(x=>x.trim()).filter(Boolean).forEach(x=>deptByName[x.toLowerCase()]=id); } /* V1.4.3: khớp cả mã tổ, nhiều tên Hik cách | */
   const COMPANY_NAMES=new Set(['châu bá thảo','châu cẩm','tấn khởi','hồng đồng']);
   const items=[]; const newDepts={}; // tenHik -> dept doc
   for(const r of rows.slice(hi+1)){ const no=String(r[ci.no]||'').trim(); let name=String(r[ci.name]||'').trim(); if(ci.ho>=0&&r[ci.ho]&&String(r[ci.ho]).trim()!=='--') name=(String(r[ci.ho]).trim()+' '+name).trim(); if(!no||!name) continue;
@@ -1361,7 +1369,7 @@ async function importEmp(inp){
       if(parts.length>=3&&!congTy) congTy=parts[parts.length-2]; else if(parts.length===2&&!congTy) congTy=parts[0];
       if(/ngh[iỉĩ]\s*(việc|viec)|nv ngh[iỉĩ]|nhân viên ngh[iỉĩ]|đã ngh[iỉĩ]/i.test(dn)){ nghi=true; deptName=dn; dn=''; }
       else if(parts.length===2&&COMPANY_NAMES.has(dn.toLowerCase())) dn='';
-      if(dn){ deptName=dn; deptId=deptByName[dn.toLowerCase()]||null; if(!deptId){ let id=slug(dn).toLowerCase().replace(/^-+|-+$/g,'')||('bp-'+Object.keys(DEPTS).length); if(DEPTS[id]||newDepts[id]) id+='-'+(Object.keys(DEPTS).length+Object.keys(newDepts).length); newDepts[id]={ten:dn,tenHik:dn,congTy:congTy||'',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+Object.keys(newDepts).length+1,autoCreated:true}; deptByName[dn.toLowerCase()]=id; deptId=id; } } }
+      if(dn){ deptName=dn; deptId=deptByName[dn.toLowerCase()]||null; if(!deptId){ const sl=slug(dn).toLowerCase().replace(/^-+|-+$/g,''); if(sl&&DEPTS[sl]) deptId=sl; } if(!deptId){ let id=slug(dn).toLowerCase().replace(/^-+|-+$/g,'')||('bp-'+Object.keys(DEPTS).length); if(DEPTS[id]||newDepts[id]) id+='-'+(Object.keys(DEPTS).length+Object.keys(newDepts).length); newDepts[id]={ten:dn,tenHik:dn,congTy:congTy||'',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+Object.keys(newDepts).length+1,autoCreated:true}; deptByName[dn.toLowerCase()]=id; deptId=id; } } }
     if(congTy) info.congTy=congTy;
     const cur=EMPS[no]; const isNew=!cur;
     const deptChange=!isNew&&!nghi&&deptId&&cur.boPhan&&cur.boPhan!==deptId;
@@ -1373,14 +1381,21 @@ async function importEmp(inp){
   const cNew=items.filter(x=>x.isNew).length, cChg=items.filter(x=>x.deptChange), cFirst=items.filter(x=>x.firstAssign).length, cNghi=items.filter(x=>x.toNghi).length, cUpd=items.filter(x=>!x.isNew).length;
   const dn=id=>DEPTS[id]?DEPTS[id].ten:(newDepts[id]?newDepts[id].ten+' (mới)':id||'—');
   openModal(`<h3>Xem trước nhập Excel</h3><div class="sub">${items.length} dòng · ${f.name}</div>
-   <div class="names">• Thêm mới: <b>${cNew}</b> người${cNew?' (tự gán tổ theo Hik)':''}<br>• Cập nhật thông tin (tên, email, điện thoại…): <b>${cUpd}</b> người<br>• Gán tổ lần đầu (đang "chưa gán"): <b>${cFirst}</b><br>• Đổi tổ so với app: <b>${cChg.length}</b><br>• Chuyển sang nghỉ việc: <b>${cNghi}</b><br>• Tổ mới sẽ tạo: <b>${Object.keys(newDepts).length}</b>${Object.keys(newDepts).length?' — '+Object.values(newDepts).map(d=>esc(d.ten)).join(', '):''}</div>
+   <div class="names">• Thêm mới: <b>${cNew}</b> người${cNew?' (tự gán tổ theo Hik)':''}<br>• Cập nhật thông tin (tên, email, điện thoại…): <b>${cUpd}</b> người<br>• Gán tổ lần đầu (đang "chưa gán"): <b>${cFirst}</b><br>• Đổi tổ so với app: <b>${cChg.length}</b><br>• Chuyển sang nghỉ việc: <b>${cNghi}</b><br>• Nhóm Hik chưa khớp tổ nào: <b>${Object.keys(newDepts).length}</b></div>
+   ${Object.keys(newDepts).length?`<div class="note" style="margin:8px 0">Chọn tổ tương ứng cho từng nhóm Hik (app tự lưu vào "Tên trên Hik" để lần sau khớp). Để "(tạo tổ mới)" nếu thật sự là tổ mới.</div><div class="names" style="max-height:220px;overflow:auto">${Object.keys(newDepts).map(nid=>`<div class="kv"><span>${esc(newDepts[nid].ten)}</span><select class="impMap" data-nid="${esc(nid)}"><option value="">(tạo tổ mới)</option>${myDepts().map(id=>`<option value="${id}" ${guessDept(newDepts[nid].ten)===id?'selected':''}>${esc(DEPTS[id].ten)}</option>`).join('')}</select></div>`).join('')}</div>`:''}
    <label class="chk"><input type="checkbox" id="impDept"> <b>Cập nhật bộ phận theo Hik</b> — áp dụng ${cChg.length} đổi tổ và ${cNghi} nghỉ việc (không tick: giữ tổ hiện tại trong app)</label>
    ${cChg.length?`<div class="names" style="max-height:140px;overflow:auto;margin-top:8px">${cChg.slice(0,60).map(x=>`${esc(x.info.name)}: ${esc(dn(x.oldDept))} → ${esc(dn(x.deptId))}`).join('<br>')}${cChg.length>60?'<br>…':''}</div>`:''}
    <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="importEmpDo()">Xác nhận nhập</button></div>`);
   window._imp={items,newDepts};
 }
+/* V1.4.3: đoán tổ cho nhóm Hik chưa khớp — cùng mã slug, hoặc tên chứa nhau */
+function guessDept(hikName){ const sl=slug(hikName).toLowerCase().replace(/^-+|-+$/g,''); if(DEPTS[sl]) return sl; const key=hikName.toLowerCase().replace(/^[\d.\s_-]+/,'').replace(/_?a\s*(hung|hùng|phan)$/i,'').replace(/[^\p{L}\p{N}]+/gu,''); if(key.length<3) return ''; for(const id of myDepts()){ const t=DEPTS[id].ten.toLowerCase().replace(/^(cbt|tk)_/,'').replace(/[^\p{L}\p{N}]+/gu,''); if(t&&(t===key||t.includes(key)||key.includes(t))) return id; } return ''; }
 async function importEmpDo(){
-  const {items,newDepts}=window._imp; const byHik=$('#impDept').checked; closeModal();
+  const {items,newDepts}=window._imp; const byHik=$('#impDept').checked;
+  const mapSel={}; $$('#modal .impMap').forEach(sl=>{ if(sl.value) mapSel[sl.dataset.nid]=sl.value; });
+  closeModal();
+  const tenHikAdd={}; for(const nid in mapSel){ const target=mapSel[nid]; const hik=newDepts[nid].ten; items.forEach(x=>{ if(x.deptId===nid){ x.deptId=target; x.deptChange=!x.isNew&&!x.nghi&&!!(EMPS[x.no]&&EMPS[x.no].boPhan)&&EMPS[x.no].boPhan!==target; x.firstAssign=!x.isNew&&!x.nghi&&!(EMPS[x.no]&&EMPS[x.no].boPhan); } }); const cur=(DEPTS[target].tenHik||'').split('|').map(v=>v.trim()).filter(Boolean); if(!cur.includes(hik)) cur.push(hik); tenHikAdd[target]=cur.join(' | '); delete newDepts[nid]; }
+  for(const id in tenHikAdd){ try{ await db.collection('departments').doc(id).set({tenHik:tenHikAdd[id],updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); DEPTS[id].tenHik=tenHikAdd[id]; }catch(e){ toast(errMsg(e),8000); return; } }
   let b=db.batch(), cnt=0, n=0; const pending=[];
   const flush=async()=>{ if(cnt){ try{ await b.commit(); }catch(e){ toast(errMsg(e)+`\nĐã lưu ${n-pending.length} người trước khi lỗi.`,10000); throw e; } pending.forEach(([k,id,u])=>{ if(k==='e') EMPS[id]=Object.assign({employeeNo:id,active:true},EMPS[id]||{},u); else DEPTS[id]=Object.assign(DEPTS[id]||{},u); }); pending.length=0; b=db.batch(); cnt=0; } };
   for(const id in newDepts){ const d=Object.assign({createdAt:TS.now(),createdBy:ME.username},newDepts[id]); b.set(db.collection('departments').doc(id),d); pending.push(['d',id,d]); cnt++; }
@@ -1389,7 +1404,7 @@ async function importEmpDo(){
     else if(x.firstAssign){ u.boPhan=x.deptId; u.active=true; }
     else if(byHik){ if(x.nghi){ u.active=false; u.boPhan=''; u.ghiChuHik=x.deptName; } else if(x.deptId){ u.boPhan=x.deptId; u.active=true; } }
     b.set(db.collection('employees').doc(x.no),u,{merge:true}); pending.push(['e',x.no,u]); n++; cnt++; if(cnt>=400) await flush(); }
-  await flush(); fillDeptSelects(); renderEmp();
+  await flush(); saveBaseCache(true); fillDeptSelects(); renderEmp();
   toast(`Đã nhập ${n} người (${items.filter(x=>x.isNew).length} mới${byHik?', đã cập nhật bộ phận theo Hik':', giữ nguyên tổ hiện tại'}).`,7000);
 }
 
@@ -1421,14 +1436,34 @@ function renderCfg(){
 /* V1.3.7: ẩn/hiện ô theo kiểu lương và số nhóm */
 function cfgToggle(){ const dm=($('#cKieu')&&$('#cKieu').value)==='thang_tc_gio'; const kt=dm&&$('#cCachDiem')&&$('#cCachDiem').value==='khungTT'; $$('#cfgBody .cfg-khung').forEach(x=>x.classList.toggle('hide',!kt)); const sn=$('#cfgBody input[data-r="soNhom"]'); const n=sn?Number(sn.value)||1:1; $$('#cfgBody .cfg-gio').forEach(x=>x.classList.toggle('hide',dm)); $$('#cfgBody .cfg-diem').forEach(x=>x.classList.toggle('hide',!dm)); $$('#cfgBody .cfg-nhom').forEach((x,i)=>x.classList.toggle('hide',n<i+2)); if(sn&&!sn.dataset.bound){ sn.dataset.bound='1'; sn.addEventListener('input',cfgToggle); } }
 function newDept(){ const id=prompt('Mã bộ phận (không dấu, vd: xep-hop, cap-dong, bc-son):'); if(!id) return; const k=slug(id).toLowerCase(); if(DEPTS[k]){ toast('Đã có mã này'); return; } DEPTS[k]={ten:id,congTy:'Châu Bá Thảo',kieu:'gio_he',rules:{},thuTu:Object.keys(DEPTS).length+1}; fillDeptSelects(); $('#cDept').value=k; renderCfg(); toast('Sửa tên/đơn giá rồi bấm Lưu bộ phận'); }
-async function delDept(){ const id=$('#cDept').value; if(!id||!DEPTS[id]) return; const n=Object.values(EMPS).filter(e=>e.boPhan===id).length;
+/* V1.4.3: gộp tổ nguồn vào tổ đích — chuyển người, sao chép giờ TT/ghi chú ngày đích chưa có, tài khoản tổ trưởng, tên Hik; rồi xoá tổ nguồn */
+function mergeDept(){ const src=$('#cDept').value; if(!src||!DEPTS[src]) return; const n=Object.values(EMPS).filter(e=>e.boPhan===src).length;
+  openModal(`<h3>Gộp "${esc(DEPTS[src].ten)}" vào tổ khác</h3><div class="sub">${n} nhân viên sẽ chuyển sang tổ đích; giờ tổ trưởng/ghi chú các ngày tổ đích chưa có sẽ được mang theo; tài khoản tổ trưởng đang xem tổ này chuyển sang tổ đích; tên "${esc(DEPTS[src].ten)}" ghi vào "Tên trên Hik" của tổ đích. Sau đó tổ nguồn bị xoá.</div>
+   <div class="fld"><label>Tổ đích</label><select id="mgTarget">${myDepts().filter(id=>id!==src).map(id=>`<option value="${id}">${esc(DEPTS[id].ten)} (${esc(id)} · ${deptEmps(id).length} NV)</option>`).join('')}</select></div>
+   <div class="btnrow"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn p" onclick="mergeDeptDo('${esc(src)}')">Gộp</button></div>`); }
+async function mergeDeptDo(src){ const target=$('#mgTarget').value; if(!target||target===src||!DEPTS[target]) return; if(!confirm(`Gộp "${DEPTS[src].ten}" → "${DEPTS[target].ten}"? Không hoàn tác được.`)) return; closeModal();
+  try{
+    const es=await db.collection('employees').where('boPhan','==',src).get(); let b=db.batch(), c=0; const flush=async()=>{ if(c){ await b.commit(); b=db.batch(); c=0; } };
+    es.forEach(x=>{ b.set(x.ref,{boPhan:target,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); if(EMPS[x.id]) EMPS[x.id].boPhan=target; c++; }); await flush();
+    const ls=await db.collection('lines').where('deptId','==',src).get(); const ids=[]; ls.forEach(x=>ids.push(x)); let copied=0;
+    for(const x of ids){ const d=x.data(); const tid=target+'_'+d.date; const t=await db.collection('lines').doc(tid).get(); if(!t.exists||!(t.data().inTime||t.data().xc)){ const nd=Object.assign({},t.exists?t.data():{},d,{deptId:target,mergedFrom:src}); b.set(db.collection('lines').doc(tid),nd,{merge:true}); LINES[tid]=nd; copied++; c++; if(c>=300) await flush(); } }
+    await flush();
+    const us=await db.collection('users').get(); us.forEach(x=>{ const u=x.data(); if(Array.isArray(u.depts)&&u.depts.includes(src)){ const nd=[...new Set(u.depts.map(v=>v===src?target:v))]; b.set(x.ref,{depts:nd},{merge:true}); c++; } }); await flush();
+    const cur=(DEPTS[target].tenHik||'').split('|').map(v=>v.trim()).filter(Boolean); [DEPTS[src].ten,DEPTS[src].tenHik].filter(Boolean).forEach(v=>{ v.split('|').map(z=>z.trim()).forEach(z=>{ if(z&&!cur.includes(z)) cur.push(z); }); }); const tenHik=cur.join(' | ');
+    b.set(db.collection('departments').doc(target),{tenHik,updatedAt:TS.now(),updatedBy:ME.username},{merge:true}); b.delete(db.collection('departments').doc(src)); c++; await flush();
+    DEPTS[target].tenHik=tenHik; delete DEPTS[src]; saveBaseCache(true);
+    toast(`Đã gộp: ${es.size} người, ${copied} ngày giờ TT, tổ nguồn đã xoá.`,8000); fillDeptSelects(); $('#cDept').value=target; renderCfg();
+  }catch(e){ toast('Gộp thất bại: '+errMsg(e)+' — kiểm tra lại Cấu hình/Nhân viên, bấm Làm mới.',10000); }
+}
+async function delDept(){ const id=$('#cDept').value; if(!id||!DEPTS[id]) return; let n=Object.values(EMPS).filter(e=>e.boPhan===id).length;
+  try{ const q=await db.collection('employees').where('boPhan','==',id).limit(5).get(); n=Math.max(n,q.size); }catch(e){ toast('Không kiểm tra được Firestore: '+errMsg(e),6000); return; } /* V1.4.3: kiểm tra thẳng Firestore, không tin cache */
   if(n){ toast(`Bộ phận còn ${n} nhân viên đang gán — chuyển họ sang tổ khác (tab Nhân viên) rồi mới xoá.`,7000); return; }
   if(!confirm(`Xoá bộ phận "${DEPTS[id].ten}"? Giờ chuyền/ngày đã chốt của tổ này (nếu có) vẫn được giữ trong dữ liệu.`)) return;
   try{ await db.collection('departments').doc(id).delete(); }catch(e){ toast(errMsg(e),8000); return; }
-  delete DEPTS[id]; fillDeptSelects(); renderCfg(); toast('Đã xoá bộ phận'); }
+  delete DEPTS[id]; saveBaseCache(true); fillDeptSelects(); renderCfg(); toast('Đã xoá bộ phận'); }
 async function saveDept(){ const id=$('#cDept').value; if(!id) return; const rules={}; $$('#cfgBody input[data-r]').forEach(i=>{ rules[i.dataset.r]=Number(String(i.value).replace(/[^\d.]/g,''))||0; }); $$('#cfgBody input[data-r2]').forEach(i=>{ rules[i.dataset.r2]=i.value; });
   const d={ten:$('#cTen').value.trim()||id,tenHik:$('#cTenHik').value.trim(),congTy:$('#cCty').value.trim(),thuTu:Number($('#cThuTu').value)||0,kieu:$('#cKieu').value,tuCham:$('#cTuCham').checked||$('#cGioCoDinh').checked,gioCoDinh:$('#cGioCoDinh').checked,cachDiem:$('#cCachDiem').value,tcKhongBu:$('#cCachDiem').value==='khongbu',ca24:$('#cCa24').checked,rules,updatedAt:TS.now(),updatedBy:ME.username};
-  try{ await db.collection('departments').doc(id).set(d,{merge:true}); }catch(e){ toast(errMsg(e),8000); return; } DEPTS[id]=Object.assign(DEPTS[id]||{},d); fillDeptSelects(); $('#cDept').value=id; Object.keys(EVCACHE).forEach(k=>delete EVCACHE[k]); toast('Đã lưu bộ phận '+d.ten); }
+  try{ await db.collection('departments').doc(id).set(d,{merge:true}); }catch(e){ toast(errMsg(e),8000); return; } DEPTS[id]=Object.assign(DEPTS[id]||{},d); saveBaseCache(true); fillDeptSelects(); $('#cDept').value=id; Object.keys(EVCACHE).forEach(k=>delete EVCACHE[k]); toast('Đã lưu bộ phận '+d.ten); }
 async function renderUsers(){ const q=await db.collection('users').get(); const box=$('#usersBox'); if(!box) return;
   box.innerHTML='<table><tr><th>Đăng nhập</th><th class="l">Họ tên</th><th>Vai trò</th><th class="l">Bộ phận (tổ trưởng)</th><th class="l">Tab</th><th>Hoạt động</th><th></th></tr>'+q.docs.map(x=>{const u=x.data(); return `<tr><td>${esc(x.id)}</td><td class="l">${esc(u.name)}</td><td>${{admin:'Quản trị',ketoan:'Kế toán',totruong:'Tổ trưởng'}[u.role]||u.role}</td><td class="l">${(u.depts||[]).map(d=>DEPTS[d]?esc(DEPTS[d].ten):d).join(', ')}</td><td class="l small">${((u.tabs&&u.tabs.length)?u.tabs:ROLE_TABS[u.role]||[]).map(k=>(TAB_LIST.find(t=>t[0]===k)||[k,k])[1]).join(', ')}</td><td>${u.active===false?'Khoá':'✓'}</td><td><button class="btn sm" onclick="editUser('${esc(x.id)}')">Sửa</button></td></tr>`;}).join('')+'</table>'; }
 async function editUser(id){ const u=id?(await db.collection('users').doc(id).get()).data():{role:'totruong',depts:[],active:true};

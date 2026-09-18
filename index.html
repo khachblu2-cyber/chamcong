@@ -1,7 +1,7 @@
 <!--
 ==========================================================
  CHẤM CÔNG — App nội bộ (1 file HTML)
- Phiên bản : V1.4.8
+ Phiên bản : V1.5.0
  Ngày      : 18/09/2026
  Chủ dự án : Tinh Nguyen
  Firebase  : project chamcongcbt (asia-southeast1)
@@ -13,6 +13,14 @@
  Firestore : events (Cloud Function ghi) · employees · departments
              · users · adjustments/{empNo_date} · payroll/{ym_empNo}
  Lịch sử   :
+   V1.5.0 – (1) Cache gắn số phiên bản: đổi bản tự bỏ cache cũ, không còn số sai sau
+            khi up. (2) Bộ phận (cấu hình) luôn tải mới mỗi lần mở; chỉ nhân viên cache
+            12h. (3) Ô báo tải tại chỗ ("Đang tải lượt quét… x/y lô"), bảng chỉ vẽ khi
+            đủ; lỗi hiện đỏ + nút Thử lại ngay trong ô. (4) Tải sự kiện tự thử lại 1 lần.
+            (5) Khôi phục tab Lương và nút chụp ảnh Báo cáo ngày (bị mất từ
+            V1.4.1 khi thay hàm xuất Excel).
+   V1.4.9 – Xếp nhóm giờ (N1/N2/N3) theo cả giờ vào lẫn giờ ra; nhóm cùng giờ vào
+            (hoặc cùng giờ ra) phân biệt đúng. Trước chỉ so giờ vào → IQF Cầm dồn hết N1.
    V1.4.8 – (1) Nhập Excel: khớp tên sau khi bỏ dấu; nhóm Hik chưa khớp → đoán theo
             ĐA SỐ nhân viên của nhóm đang ở tổ nào (dự phòng so tên); xem trước khoá
             nút Nhập khi còn nhóm chưa gán; tạo tổ mới chỉ khi tick riêng.
@@ -285,6 +293,7 @@ td.gv{background:#FFF8E1;font-weight:600}
 .stat{display:flex;gap:8px;padding:6px 12px;font-size:12px;color:var(--muted);flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);background:#fff}.stat b{color:var(--ink)}
 .stb{border:1px solid var(--line);background:#fff;border-radius:7px;padding:3px 8px;font:inherit;font-size:13px;cursor:pointer;color:inherit}.stb b{color:var(--ink)}.stb.on{background:var(--blue);color:#fff!important;border-color:var(--blue)}.stb.on b{color:#fff}.csep{border-top:3px double var(--blue);margin:2px 0}
 .dsc{display:inline-block;padding:2px 6px;border-radius:5px;background:#EEF2F7;margin:1px 3px 1px 0;white-space:nowrap;font-size:12px}.dsc.in{background:#DFF2E0;color:#256B2C;font-weight:700}.dsc.out{background:#DBE7FB;color:#1F4B8F;font-weight:700}.dsc.stray{background:#F3F3F3;color:#888;text-decoration:line-through}.dsc small{color:inherit;opacity:.75}
+.loadbox{padding:18px 14px;text-align:center;color:var(--muted)}.loadbox.err{color:var(--rust);background:#FBE9E7;border-radius:8px;margin:8px}.loadbox .btn{margin-top:8px}
 .sh{display:none}.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;font-weight:700;vertical-align:1px}.tag.n1{background:#CFDCF2;color:var(--blue)}.tag.n2{background:#F3E2B3;color:var(--amber)}.tag.n3{background:var(--moss-soft);color:var(--moss)}
 .tools{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:#fff;font-size:13px;flex-wrap:wrap}.tools .lbl{color:var(--muted)}
 .emp .cb{width:20px;height:20px;flex:none;margin:0}.emp.sel{outline:2px solid var(--blue);outline-offset:-2px}.names{font-size:13px;line-height:1.5;background:var(--paper);border-radius:6px;padding:8px 10px;margin-bottom:10px;max-height:160px;overflow:auto}
@@ -328,7 +337,7 @@ td.w{background:var(--amber-soft);color:var(--amber);font-weight:700}td.pp{backg
     <button class="btn" style="width:100%" onclick="createFirstAdmin()">Tạo tài khoản quản trị</button></div>
 </div>
 <div id="app" class="hide">
-<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.4.8</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
+<div class="top"><div><div class="t">Chấm Công</div><div class="s" id="who"></div></div><div class="sp"></div><span class="ver">V1.5.0</span><button class="btn sm" style="border-color:#fff;color:#fff;background:none" onclick="logout()">Thoát</button></div>
 <div class="tabs" id="tabs">
   <button data-t="today" class="on">Hôm nay</button><button data-t="cham">Chấm công</button><button data-t="month">Tháng</button><button data-t="bc">Báo cáo ngày</button><button data-t="pay">Lương</button><button data-t="detail">Chi tiết quét</button><button data-t="emp">Nhân viên</button><button data-t="cfg">Cấu hình</button>
 </div>
@@ -745,21 +754,24 @@ function showTab(t){ saveBaseCache(); $$('#tabs button').forEach(b=>b.classList.
 /* ===================== DỮ LIỆU NỀN ===================== */
 /* V1.3.8: cache danh sách bộ phận + nhân viên trong máy 12 giờ (tiết kiệm ~900 lượt đọc mỗi lần mở).
    Mọi thay đổi trong app ghi thẳng vào DEPTS/EMPS nên cache cập nhật lại khi đổi tab; "Làm mới" ở Chấm công tải lại từ Firestore. */
-const BASE_TTL=12*3600000;
+const APP_VER='V1.5.0'; const BASE_TTL=12*3600000;
+/* V1.5.0: cache gắn phiên bản — đổi bản mới tự bỏ cache cũ */
+(function(){ try{ if(localStorage.getItem('cc_ver')!==APP_VER){ Object.keys(localStorage).filter(k=>k==='cc_base'||k.startsWith('cc_ev_')).forEach(k=>localStorage.removeItem(k)); localStorage.setItem('cc_ver',APP_VER); } }catch(e){} })();
 /* V1.4.4: Firestore Timestamp có toJSON → JSON.stringify đổi thành {seconds,nanoseconds} TRƯỚC khi gọi replacer; phải nhận cả dạng đó */
 function tsRep(k,v){ if(v&&typeof v==='object'){ if(typeof v.toMillis==='function') return {__ts:v.toMillis()}; if(typeof v.seconds==='number'&&typeof v.nanoseconds==='number'&&Object.keys(v).length<=2) return {__ts:v.seconds*1000+Math.round(v.nanoseconds/1e6)}; } return v; }
 function tsRev(k,v){ if(v&&typeof v==='object'){ if(v.__ts!=null){ const ms=v.__ts; return {toMillis:()=>ms,toDate:()=>new Date(ms),seconds:Math.floor(ms/1000)}; } if(typeof v.seconds==='number'&&typeof v.nanoseconds==='number'&&Object.keys(v).length<=2){ const ms=v.seconds*1000+Math.round(v.nanoseconds/1e6); return {toMillis:()=>ms,toDate:()=>new Date(ms),seconds:v.seconds}; } } return v; }
 /* mốc thời gian an toàn: nhận Timestamp, {seconds}, số, hoặc thiếu */
 function tsMs(v){ if(!v) return 0; if(typeof v==='number') return v; if(typeof v.toMillis==='function') return v.toMillis(); if(typeof v.seconds==='number') return v.seconds*1000; return 0; }
 let BASE_SAVED_AT=0;
-function saveBaseCache(force){ try{ if(!force&&Date.now()-BASE_SAVED_AT<180000) return; /* V1.4.3: tối đa 3 phút/lần, trừ khi có thay đổi (force) */ if(Object.keys(EMPS).length){ localStorage.setItem('cc_base',JSON.stringify({v:2,t:Date.now(),DEPTS,EMPS},tsRep)); BASE_SAVED_AT=Date.now(); } }catch(e){} }
+function saveBaseCache(force){ try{ if(!force&&Date.now()-BASE_SAVED_AT<180000) return; /* V1.4.3: tối đa 3 phút/lần, trừ khi có thay đổi (force) */ if(Object.keys(EMPS).length){ localStorage.setItem('cc_base',JSON.stringify({v:3,t:Date.now(),EMPS},tsRep)); BASE_SAVED_AT=Date.now(); } }catch(e){} }
 window.addEventListener('pagehide',()=>saveBaseCache(true));
 async function loadBase(force){
-  if(!force){ try{ const c=JSON.parse(localStorage.getItem('cc_base')||'null',tsRev); if(c&&c.v===2&&c.t&&Date.now()-c.t<BASE_TTL&&c.DEPTS&&c.EMPS){ DEPTS=c.DEPTS; EMPS=c.EMPS; return; } /* V1.4.4: chỉ nhận cache phiên bản mới */ }catch(e){} }
-  const [d,e]=await Promise.all([db.collection('departments').get(), db.collection('employees').get()]);
-  DEPTS={}; d.forEach(x=>DEPTS[x.id]=x.data());
-  EMPS={}; e.forEach(x=>EMPS[x.id]=Object.assign({employeeNo:x.id},x.data()));
-  saveBaseCache();
+  let cachedEmps=null; if(!force){ try{ const c=JSON.parse(localStorage.getItem('cc_base')||'null',tsRev); if(c&&c.v===3&&c.t&&Date.now()-c.t<BASE_TTL&&c.EMPS) cachedEmps=c.EMPS; }catch(e){} }
+  /* V1.5.0: bộ phận (cấu hình) LUÔN tải mới; chỉ nhân viên dùng cache 12h */
+  const d=await db.collection('departments').get(); DEPTS={}; d.forEach(x=>DEPTS[x.id]=x.data());
+  if(cachedEmps){ EMPS=cachedEmps; return; }
+  const e=await db.collection('employees').get(); EMPS={}; e.forEach(x=>EMPS[x.id]=Object.assign({employeeNo:x.id},x.data()));
+  saveBaseCache(true);
 }
 function fillDeptSelects(){
   const opts=myDepts().map(id=>`<option value="${id}">${esc(DEPTS[id].ten)}</option>`).join('');
@@ -775,6 +787,11 @@ function cachDiemOf(deptId){ const d=DEPTS[deptId]||{}; return d.cachDiem||(d.tc
 function rulesOf(deptId){ const R=Object.assign({},DEFAULT_RULES,(DEPTS[deptId]&&DEPTS[deptId].rules)||{}); const cd=cachDiemOf(deptId); R._khongBu=cd!=='cachuan'; R._khungTT=cd==='khungTT'; R._ca10=cd==='ca10'; R._ca24=!!(DEPTS[deptId]&&DEPTS[deptId].ca24); return R; }
 
 /* Lấy sự kiện quét của danh sách NV trong khoảng ngày [from,to] (VN), có đệm 1 ngày trước/sau để bắt ca đêm */
+/* V1.5.0: ô báo tải tại chỗ — loadBox(sel, msg) / loadErr(sel, e, retryJs); loadEvents báo tiến trình vào ô đang mở */
+let LOADSEL=null;
+function loadBox(sel,msg){ LOADSEL=sel; const el=$(sel); if(el) el.innerHTML=`<div class="loadbox"><div class="small" id="loadMsg">${msg||'Đang tải dữ liệu…'}</div></div>`; }
+function loadTick(txt){ const m=$('#loadMsg'); if(m) m.textContent=txt; }
+function loadErr(sel,e,retryJs){ const el=$(sel); if(el) el.innerHTML=`<div class="loadbox err"><b>Không tải được dữ liệu.</b><div class="small">${esc(errMsg(e)||String(e))}</div><button class="btn sm p" onclick="${retryJs}">Thử lại</button></div>`; }
 async function loadEvents(empNos, from, to, force){
   const key=[...empNos].sort().join(',')+'|'+from+'|'+to; // khoá theo đúng danh sách mã NV
   if(!force && EVCACHE[key]) return EVCACHE[key];
@@ -782,11 +799,9 @@ async function loadEvents(empNos, from, to, force){
   if(force&&pastKey){ try{ localStorage.removeItem(pastKey); }catch(e){} }
   if(pastKey&&!force){ try{ const c=localStorage.getItem(pastKey); if(c){ const out=JSON.parse(c).map(a=>({employeeNo:a[0],ms:a[1],mac:a[2],deviceName:a[3]||''})); EVCACHE[key]=out; return out; } }catch(e){} }
   const t0=TS.fromMillis(vnMs(addDays(from,-1),'00:00')), t1=TS.fromMillis(vnMs(addDays(to,2),'00:00'));
-  const out=[]; const chunks=[]; for(let i=0;i<empNos.length;i+=30) chunks.push(empNos.slice(i,i+30));
-  await Promise.all(chunks.map(async c=>{
-    const q=await db.collection('events').where('employeeNo','in',c).where('time','>=',t0).where('time','<',t1).get();
-    q.forEach(x=>{ const v=x.data(); if(v.time) out.push({employeeNo:v.employeeNo,ms:v.time.toMillis(),mac:v.mac,deviceName:v.deviceName||''}); });
-  }));
+  const out=[]; const chunks=[]; for(let i=0;i<empNos.length;i+=30) chunks.push(empNos.slice(i,i+30)); let done=0; loadTick(`Đang tải lượt quét… 0/${chunks.length} lô`);
+  const one=async c=>{ const q=await db.collection('events').where('employeeNo','in',c).where('time','>=',t0).where('time','<',t1).get(); q.forEach(x=>{ const v=x.data(); if(v.time) out.push({employeeNo:v.employeeNo,ms:v.time.toMillis(),mac:v.mac,deviceName:v.deviceName||''}); }); done++; loadTick(`Đang tải lượt quét… ${done}/${chunks.length} lô`); };
+  await Promise.all(chunks.map(async c=>{ try{ await one(c); }catch(e){ await new Promise(r=>setTimeout(r,1500)); await one(c); } })); /* V1.5.0: thử lại 1 lần */
   EVCACHE[key]=out; if(pastKey) evStore(pastKey,out); return out;
 }
 function evHash(str){ let h=5381; for(let i=0;i<str.length;i++) h=((h<<5)+h+str.charCodeAt(i))|0; return (h>>>0).toString(36)+'_'+str.length; }
@@ -843,7 +858,8 @@ function soNhom(deptId){ return Math.max(1,Math.min(3,Number(rulesOf(deptId).soN
 function lineVariant(line,g){ if(!line||!g) return line; const G=(line.groups||[])[g-1]; if(!G||!G.inTime) return line; return Object.assign({},line,{inTime:G.inTime,outTime:G.outTime||line.outTime,outNextDay:!!G.outNextDay}); }
 function lineGroupsOf(deptId,line){ const R=rulesOf(deptId); const n=soNhom(deptId); const out=[]; for(let g=0;g<n;g++){ const v=lineVariant(line,g); out.push(v); } return out; }
 /* chọn nhóm theo giờ quét vào gần giờ Vào của nhóm nào nhất */
-function pickGroup(deptId,line,session,forced){ const n=soNhom(deptId); if(n<=1) return 0; if(forced!=null&&forced>=0&&forced<n) return forced; if(!session) return 0; let best=0,bd=Infinity; for(let g=0;g<n;g++){ const v=lineVariant(line,g); if(!v||!v.inTime) continue; const t=vnMs(v.date,v.inTime); const d=Math.abs(session.inMs-t); if(d<bd){bd=d;best=g;} } return best; }
+/* V1.4.9: xếp nhóm theo cả giờ vào lẫn giờ ra (tổng chênh lệch nhỏ nhất) — nhóm cùng giờ vào hoặc cùng giờ ra vẫn phân biệt được; thiếu quét ra chỉ so giờ vào */
+function pickGroup(deptId,line,session,forced){ const n=soNhom(deptId); if(n<=1) return 0; if(forced!=null&&forced>=0&&forced<n) return forced; if(!session) return 0; let best=0,bd=Infinity; for(let g=0;g<n;g++){ const v=lineVariant(line,g); if(!v||!v.inTime) continue; const t=vnMs(v.date,v.inTime); let d=Math.abs(session.inMs-t); if(session.outMs&&v.outTime){ let o=vnMs(v.date,v.outTime); if(v.outNextDay) o+=86400000; if(o<=t) o+=86400000; d+=Math.abs(session.outMs-o); } if(d<bd){bd=d;best=g;} } return best; }
 function lineB(deptId,line,R){ return isDiem(deptId)?lineBoundsDiem(line,R||rulesOf(deptId)):lineBounds(line); }
 async function loadLines(deptId, from, to){
   const q=await db.collection('lines').where('deptId','==',deptId).where('date','>=',from).where('date','<=',to).get();
@@ -861,8 +877,8 @@ async function loadCham(force){ CFILTER=null; if(force){ clearEvCache(); try{ aw
   const dept=$('#cDeptSel').value, date=$('#cDate').value;
   if(!dept){ $('#cLine').innerHTML='<div class="note info">Chưa có bộ phận nào bật "Tổ trưởng tự chấm". Vào Cấu hình → tick "Tổ trưởng tự chấm (theo giờ tổ trưởng)" cho bộ phận cần dùng.</div>'; $('#cList').innerHTML=''; $('#cStat').innerHTML=''; $('#cFoot').innerHTML=''; return; }
   const emps=deptEmps(dept); const nos=emps.map(e=>String(e.employeeNo)); $('#cCount').textContent=nos.length+' NV';
-  $('#cList').innerHTML='<div class="small" style="padding:14px">Đang tải…</div>';
-  const ym=date.slice(0,7); await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,ym+'-01',ym+'-'+pad(monthDays(ym))), loadLines(dept,date,date)]);
+  loadBox('#cList');
+  const ym=date.slice(0,7); try{ await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,ym+'-01',ym+'-'+pad(monthDays(ym))), loadLines(dept,date,date)]); }catch(e){ loadErr('#cList',e,'loadCham(true)'); return; }
   CHAM=computeDept(dept,EVCACHE[[...nos].sort().join(',')+'|'+date+'|'+date],date,date); CHAMCTX={dept,date}; renderCham();
 }
 /* Ngày hiện tại và chưa tới giờ ra chuyền -> người chưa quét ra là đang làm, không phải lỗi */
@@ -1066,8 +1082,8 @@ async function loadToday(force){ if(dSel.size===1) syncFrom([...dSel][0],'');
   const depts=selDepts(), date=$('#dDate').value;
   if(!depts.length){ $('#dList').innerHTML='<div class="note">Chưa có bộ phận. Vào Cấu hình tạo bộ phận và gán nhân viên.</div>'; return; }
   const nos=[]; depts.forEach(d=>deptEmps(d).forEach(e=>nos.push(String(e.employeeNo)))); $('#dCount').textContent=nos.length+' NV';
-  $('#dList').innerHTML='<div class="small" style="padding:14px">Đang tải…</div>';
-  const [ev]=await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,date,date)]);
+  loadBox('#dList');
+  let ev; try{ [ev]=await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,date,date)]); }catch(e){ loadErr('#dList',e,'loadToday(true)'); return; }
   TODAY={}; TODAYDEPTS=depts;
   for(const d of depts){ const r=computeDept(d,ev,date,date); for(const no in r){ r[no].dept=d; TODAY[no]=r[no]; } }
   renderToday();
@@ -1157,9 +1173,9 @@ async function loadDetail(force){
   let emps=(dept==='__all'?Object.values(EMPS).filter(e=>e.active!==false&&e.boPhan&&DEPTS[e.boPhan]&&myDepts().includes(e.boPhan)):deptEmps(dept)).filter(match);
   if(!emps.length){ $('#dtTbl').innerHTML='<div class="small" style="padding:14px">Không có nhân viên phù hợp.</div>'; $('#dtSum').style.display='none'; return; }
   if(dept==='__all'&&emps.length>40){ toast(`"${q}" khớp ${emps.length} người — gõ cụ thể hơn (tối đa 40).`,6000); return; }
-  $('#dtTbl').innerHTML='<div class="small" style="padding:14px">Đang tải…</div>';
+  loadBox('#dtTbl');
   const nos=emps.map(e=>String(e.employeeNo)); const depts=[...new Set(emps.map(e=>e.boPhan))];
-  try{ var [ev]=await Promise.all([loadEvents(nos,from,to,force), loadAdj(nos,from,to), ...depts.filter(isTuCham).map(d=>loadLines(d,addDays(from,-1),addDays(to,1)))]); }catch(e){ toast(errMsg(e),8000); $('#dtTbl').innerHTML=''; return; } /* V1.4.7: giờ TT ngày kề để ghép ca đúng như Tháng */
+  try{ var [ev]=await Promise.all([loadEvents(nos,from,to,force), loadAdj(nos,from,to), ...depts.filter(isTuCham).map(d=>loadLines(d,addDays(from,-1),addDays(to,1)))]); }catch(e){ loadErr('#dtTbl',e,'loadDetail(true)'); return; } /* V1.4.7: giờ TT ngày kề để ghép ca đúng như Tháng */
   const byNo={}; for(const d of depts){ const r=computeDept(d,ev,from,to); for(const no in r) if(nos.includes(no)) byNo[no]=Object.assign(r[no],{dept:d}); }
   const scansBy={}; ev.forEach(x=>{ (scansBy[String(x.employeeNo)]=scansBy[String(x.employeeNo)]||[]).push(x); });
   const rows=[]; const days=[]; for(let d=from; d<=to; d=addDays(d,1)) days.push(d);
@@ -1193,9 +1209,9 @@ async function loadMonth(force){ syncFrom($('#mDept')&&$('#mDept').value,$('#mMo
   if(ME.role==='totruong'&&$('#mMonth').value!==todayVN().slice(0,7)){ $('#mMonth').value=todayVN().slice(0,7); toast('Tổ trưởng chỉ xem tháng hiện tại.'); }
   const dept=$('#mDept').value, ym=$('#mMonth').value; if(!dept||!ym) return;
   const from=ym+'-01', to=ym+'-'+pad(monthDays(ym));
-  $('#mTbl').innerHTML='<div class="small" style="padding:14px">Đang tải… (bộ phận đông có thể mất 5–10 giây)</div>';
+  loadBox('#mTbl','Đang tải dữ liệu tháng… (tổ đông có thể mất 5–10 giây)');
   const emps=deptEmps(dept); const nos=emps.map(e=>String(e.employeeNo));
-  const [ev]=await Promise.all([loadEvents(nos,from,to,force), loadAdj(nos,from,to), isTuCham(dept)?loadLines(dept,from,to):null]);
+  let ev; try{ [ev]=await Promise.all([loadEvents(nos,from,to,force), loadAdj(nos,from,to), isTuCham(dept)?loadLines(dept,from,to):null]); }catch(e){ loadErr('#mTbl',e,'loadMonth(true)'); return; }
   MONTH=computeDept(dept,ev,from,to); MONTHCTX={dept,ym,from,to}; renderMonth();
 }
 let MVIEW=localStorage.getItem('cc_mview')||'lam';
@@ -1290,9 +1306,9 @@ function renderBCPop(){ const all=myDepts(); const cur=bcDepts();
 function shiftBCDay(n){ $('#bDate').value=addDays($('#bDate').value,n); loadBC(); }
 async function loadBC(force){
   const date=$('#bDate').value, depts=bcDepts(); if(!depts.length){ $('#bcTbl').innerHTML='<div class="note">Chưa có bộ phận.</div>'; return; }
-  $('#bcTbl').innerHTML='<div class="small" style="padding:14px">Đang tổng hợp '+depts.length+' bộ phận…</div>';
+  loadBox('#bcTbl','Đang tổng hợp '+depts.length+' bộ phận…');
   const nos=[]; depts.forEach(d=>deptEmps(d).forEach(e=>nos.push(String(e.employeeNo))));
-  await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,date,date), ...depts.map(d=>loadLines(d,date,date))]); /* V1.4.1: tải lines mọi tổ để lấy ghi chú */
+  try{ await Promise.all([loadEvents(nos,date,date,force), loadAdj(nos,date,date), ...depts.map(d=>loadLines(d,date,date))]); }catch(e){ loadErr('#bcTbl',e,'loadBC(true)'); return; } /* V1.4.1: tải lines mọi tổ để lấy ghi chú */
   const ev=EVCACHE[[...nos].sort().join(',')+'|'+date+'|'+date]||[]; const since=vnMs(addDays(date,-7),'00:00');
   BC={date,rows:[]};
   for(const d of depts){ const r=computeDept(d,ev,date,date); const emps=Object.values(r); const tu=isTuCham(d); const line=tu?lineOf(d,date):null;
@@ -1331,6 +1347,20 @@ function exportBC(){ if(!BC) return; const {date,rows}=BC; const dd=date.slice(8
   for(let c=1;c<=7;c++){ const cell=row.getCell(c); cell.font=F(c<=2?15:13,true); cell.alignment=C; cell.border=box; if(c<=2) cell.fill=fillY; }
   ws.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9}; ws.pageSetup.margins={left:0.5,right:0.5,top:0.6,bottom:0.6,header:0.3,footer:0.3};
   wb.xlsx.writeBuffer().then(buf=>{ const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`BC_NHAN_SU_${date.slice(8,10)}-${date.slice(5,7)}-${date.slice(0,4)}.xlsx`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }).catch(e=>toast('Xuất Excel lỗi: '+(e&&e.message||e),6000));
+}
+async function snapBC(){ if(!BC||typeof html2canvas==='undefined'){ toast('Chưa tải được thư viện chụp ảnh, thử lại.'); return; } const el=$('#bcSnap'); const cv=await html2canvas(el,{scale:2,backgroundColor:'#fff'}); const a=document.createElement('a'); a.download=`Bao-cao-nhan-su-${BC.date}.png`; a.href=cv.toDataURL('image/png'); a.click(); toast('Đã tải ảnh, gửi Zalo được ngay'); }
+
+/* ===================== LƯƠNG ===================== */
+let PAY=null, PAYEDIT={};
+async function loadPay(){ syncFrom($('#pDept')&&$('#pDept').value,$('#pMonth')&&$('#pMonth').value);
+  const dept=$('#pDept').value, ym=$('#pMonth').value; if(!dept||!ym) return;
+  const kieu=(DEPTS[dept].kieu)||'gio_he'; $('#pKieu').textContent=KIEU[kieu];
+  if(kieu!=='gio_he'&&kieu!=='thang_tc_gio'){ $('#pTbl').innerHTML=`<div class="note">Bộ phận này dùng kiểu "${KIEU[kieu]}" — bản V1 chưa tính. Đổi kiểu trong Cấu hình hoặc chờ bản sau.</div>`; return; }
+  loadBox('#pTbl','Đang tải dữ liệu lương…');
+  const from=ym+'-01', to=ym+'-'+pad(monthDays(ym)); const emps=deptEmps(dept); const nos=emps.map(e=>String(e.employeeNo));
+  let ev,pq; try{ [ev,pq]=await Promise.all([loadEvents(nos,from,to), loadAdj(nos,from,to), db.collection('payroll').where('ym','==',ym).get(), isTuCham(dept)?loadLines(dept,from,to):null]).then(r=>[r[0],r[2]]) }catch(e){ loadErr('#pTbl',e,'loadPay()'); return; }
+  const pmap={}; pq.forEach(x=>pmap[x.data().employeeNo]=x.data());
+  PAY={dept,ym,rows:computeDept(dept,ev,from,to),pmap}; PAYEDIT={}; $('#pSave').disabled=true; renderPay();
 }
 function renderPay(){
   const {dept,ym,rows,pmap}=PAY; const R=rulesOf(dept); const list=empRows(rows,dept); if(isDiem(dept)) return renderPayDiem();
